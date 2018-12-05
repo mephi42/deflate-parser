@@ -6,9 +6,10 @@ use std::path::Path;
 
 use clap::{App, Arg};
 
-use deflate_parser::{Error, parse};
+use deflate_parser::error::Error;
+use deflate_parser::parse;
 
-fn main() -> Result<(), Error> {
+fn main_impl() -> Result<(), Error> {
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -19,6 +20,17 @@ fn main() -> Result<(), Error> {
         .get_matches();
     let file = matches.value_of("FILE").unwrap();
     let stream = parse(Path::new(file))?;
-    println!("{}", serde_json::to_string_pretty(&stream)?);
+    println!("{}", serde_json::to_string_pretty(&stream).expect("to_string_pretty"));
     Ok(())
+}
+
+fn main() {
+    match main_impl() {
+        Ok(()) => {}
+        Err(err) => {
+            eprintln!(
+                "{}", serde_json::to_string_pretty(&err).expect("to_string_pretty"));
+            ::std::process::exit(1);
+        }
+    }
 }
