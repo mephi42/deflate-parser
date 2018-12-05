@@ -32,7 +32,10 @@ pub struct DeflateStream {
 }
 
 #[derive(Serialize)]
-pub struct DeflateBlock {}
+pub struct DeflateBlock {
+    bfinal: Value<u8>,
+    btype: Value<u8>,
+}
 
 #[derive(Serialize)]
 struct DataStream {
@@ -52,8 +55,8 @@ impl DataStream {
         Ok(DataStream { bytes, pos: 0, end: len * 8 })
     }
 
-    fn require(&self, count: usize) -> Result<(), Error> {
-        if self.pos + count <= self.end {
+    fn require(&self, n: usize) -> Result<(), Error> {
+        if self.pos + n <= self.end {
             Ok(())
         } else {
             Err(self.parse_error("EOF"))
@@ -75,7 +78,7 @@ impl DataStream {
         let mut v = T::zero();
         for i in 0..bytes {
             let b = T::from(self.bytes[index + i]).ok_or(
-                ParseError { pos: self.pos, msg: String::from("Convert") })?;
+                ParseError { pos: self.pos, msg: String::from("Conversion") })?;
             v = v | (b << (i * 8));
         }
         Ok(Value {
@@ -91,7 +94,7 @@ impl DataStream {
         Ok(result)
     }
 
-    fn pop(&mut self, n: usize) -> Result<(), Error> {
+    fn drop(&mut self, n: usize) -> Result<(), Error> {
         self.require(n)?;
         self.pos += n;
         Ok(())
@@ -100,10 +103,32 @@ impl DataStream {
     fn parse_error(&self, msg: &str) -> Error {
         Error::from(ParseError { pos: self.pos, msg: String::from(msg) })
     }
+
+    fn peek_bits<T: PrimInt>(&mut self, n: usize) -> Result<Value<T>, Error> {
+        self.require(n)?;
+        let mut v = T::zero();
+        for i in 0..n {
+            let pos = self.pos + i;
+            let b = T::from(self.bytes[pos / 8]).ok_or(
+                ParseError { pos: self.pos, msg: String::from("Conversion") })?;
+            v = v | (((b >> (pos % 8)) & T::one()) << i);
+        }
+        Ok(Value {
+            v: v,
+            start: self.pos,
+            end: self.pos + n,
+        })
+    }
+
+    fn pop_bits<T: PrimInt>(&mut self, n: usize) -> Result<Value<T>, Error> {
+        let v = self.peek_bits(n)?;
+        self.pos += n;
+        Ok(v)
+    }
 }
 
 #[derive(Serialize)]
-struct Value<T> {
+pub struct Value<T> {
     v: T,
     start: usize,
     end: usize,
@@ -140,17 +165,26 @@ pub struct ParseError {
     msg: String,
 }
 
-fn parse_deflate(_data: &mut DataStream) -> Result<DeflateStream, Error> {
-    Ok(DeflateStream {
+fn parse_deflate_block(data: &mut DataStream) -> Result<DeflateBlock, Error> {
+    let bfinal = data.pop_bits::<u8>(1)?;
+    let btype = data.pop_bits::<u8>(2)?;
+    Ok(DeflateBlock { bfinal, btype })
+}
+
+fn parse_deflate(data: &mut DataStream) -> Result<DeflateStream, Error> {
+    let mut deflate = DeflateStream {
         blocks: vec![],
-    })
+    };
+    let block = parse_deflate_block(data)?;
+    deflate.blocks.push(block);
+    Ok(deflate)
 }
 
 pub fn parse(path: &Path) -> Result<CompressedStream, Error> {
     let mut data = DataStream::new(path)?;
     let magic = data.peek_le::<u16>()?;
     if magic.v == 0x8b1f {
-        data.pop(16)?;
+        data.drop(16)?;
         let method = data.pop_le::<u8>()?;
         let flags = data.pop_le::<u8>()?;
         let time = data.pop_le::<u32>()?;

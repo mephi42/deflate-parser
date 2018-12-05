@@ -13,12 +13,12 @@ fn main() -> Result<(), Error> {
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(Arg::with_name("INPUT")
+        .arg(Arg::with_name("FILE")
             .required(true)
             .index(1))
         .get_matches();
-    let input = matches.value_of("INPUT").unwrap();
-    let stream = parse(Path::new(input))?;
+    let file = matches.value_of("FILE").unwrap();
+    let stream = parse(Path::new(file))?;
     println!("{}", serde_json::to_string_pretty(&stream)?);
     Ok(())
 }
