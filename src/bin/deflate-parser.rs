@@ -6,10 +6,10 @@ use std::path::Path;
 
 use clap::{App, Arg};
 
-use deflate_parser::error::Error;
+use deflate_parser::data::CompressedStream;
 use deflate_parser::parse;
 
-fn main_impl() -> Result<(), Error> {
+fn main() {
     let matches = App::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
@@ -19,13 +19,10 @@ fn main_impl() -> Result<(), Error> {
             .index(1))
         .get_matches();
     let file = matches.value_of("FILE").unwrap();
-    let stream = parse(Path::new(file))?;
+    let mut stream: Option<CompressedStream> = None;
+    let result = parse(&mut stream, Path::new(file));
     println!("{}", serde_json::to_string_pretty(&stream).expect("to_string_pretty"));
-    Ok(())
-}
-
-fn main() {
-    match main_impl() {
+    match result {
         Ok(()) => {}
         Err(err) => {
             eprintln!(

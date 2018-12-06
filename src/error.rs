@@ -1,22 +1,12 @@
-use data::{HuffmanCode, HuffmanTree};
-
 #[derive(Serialize)]
 pub enum Error {
     Io(String),
     Parse(ParseError),
-    HuffmanCodeLengths(HuffmanTreeError<u8>),
 }
 
 #[derive(Serialize)]
 pub struct ParseError {
     pub pos: usize,
-    pub msg: String,
-}
-
-#[derive(Serialize)]
-pub struct HuffmanTreeError<T> {
-    pub tree: HuffmanTree<T>,
-    pub codes: Vec<HuffmanCode<T>>,
     pub msg: String,
 }
 
