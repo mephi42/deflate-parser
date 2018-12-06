@@ -354,7 +354,7 @@ fn parse_deflate_block_header(out: &mut Option<DeflateBlockHeader>, data: &mut D
     Ok(())
 }
 
-fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
+fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plain_pos: &mut usize,
                 hlits_tree: &HuffmanTree<u16>, hdists_tree: &HuffmanTree<u8>)
                 -> Result<(), Error> {
     // 3.2.5. Compressed blocks (length and distance codes)
@@ -368,26 +368,34 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
         let start = data.pos;
         let literal = parse_huffman_code(data, hlits_tree, start, 0, 0)?;
         let v = match literal.v {
-            0...255 => Token::Literal(literal.v as u8),
+            0...255 => {
+                *plain_pos += 1;
+                Token::Literal(*plain_pos - 1, literal.v as u8)
+            }
             256 => {
                 is_eob = true;
-                Token::Eob
+                Token::Eob(*plain_pos)
             }
             257...285 => {
                 let literal_extras = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
                     3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+                let literal_bases: [usize; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23,
+                    27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
                 let distance_extras = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
                     7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
                 let mut option_literal_extra: Option<Value<u8>> = None;
+                let literal_index = literal.v as usize - 257;
                 let literal_extra = data.pop_bits(
-                    &mut option_literal_extra, literal_extras[literal.v as usize - 257])?;
+                    &mut option_literal_extra, literal_extras[literal_index])?;
+                *plain_pos += literal_bases[literal_index] + literal_extra.v as usize;
                 let distance_start = data.pos;
                 let distance = parse_huffman_code(
                     data, hdists_tree, distance_start, 0, 0)?;
                 let mut option_distance_extra: Option<Value<u16>> = None;
                 let distance_extra = data.pop_bits(
                     &mut option_distance_extra, distance_extras[distance.v as usize])?;
-                Token::Window(literal.v, literal_extra.v, distance.v, distance_extra.v)
+                Token::Window(*plain_pos, literal.v, literal_extra.v,
+                              distance.v, distance_extra.v)
             }
             _ => return Err(data.parse_error("Literal"))
         };
@@ -400,17 +408,22 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
     Ok(())
 }
 
-fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStream)
+fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStream,
+                              plain_pos: &mut usize)
                               -> Result<(), Error> {
     // 3.2.4. Non-compressed blocks (BTYPE=00)
     data.align()?;
     let len = data.pop_le(&mut out.len)?;
+    let len_usize = len.v as usize;
     data.pop_le(&mut out.nlen)?;
-    data.pop_bytes(&mut out.data, len.v as usize)?;
+    data.pop_bytes(&mut out.data, len_usize)?;
+    out.plain_pos = Some(*plain_pos);
+    *plain_pos += len_usize;
     Ok(())
 }
 
-fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream)
+fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
+                             plain_pos: &mut usize)
                              -> Result<(), Error> {
     // Compression with fixed Huffman codes (BTYPE=01)
     let v5 = Value { v: 7, start: data.pos, end: data.pos };
@@ -434,11 +447,12 @@ fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream)
     let mut option_hdists_tree: Option<HuffmanTree<u8>> = None;
     let hdists_tree = build_huffman_tree(
         &mut option_hdists_tree, &hdists_codes)?;
-    parse_tokens(&mut out.tokens, data, &hlits_tree, &hdists_tree)?;
+    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree)?;
     Ok(())
 }
 
-fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream)
+fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream,
+                               plain_pos: &mut usize)
                                -> Result<(), Error> {
     // 3.2.7. Compression with dynamic Huffman codes (BTYPE=10)
     // 5 Bits: HLIT, # of Literal/Length codes - 257 (257 - 286)
@@ -482,11 +496,12 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
     };
     // The actual compressed data of the block
     // The literal/length symbol
-    parse_tokens(&mut out.tokens, data, &hlits_tree, &hdists_tree)?;
+    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree)?;
     Ok(())
 }
 
-fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Result<bool, Error> {
+fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain_pos: &mut usize)
+                       -> Result<bool, Error> {
     let mut option_header: Option<DeflateBlockHeader> = None;
     parse_deflate_block_header(&mut option_header, data)?;
     let header = match option_header {
@@ -508,12 +523,13 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 len: None,
                 nlen: None,
                 data: None,
+                plain_pos: None,
             }));
             let block = match out.last_mut() {
                 Some(DeflateBlock::Stored(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_stored(block, data)?;
+            parse_deflate_block_stored(block, data, plain_pos)?;
         }
         1 => {
             out.push(DeflateBlock::Fixed(DeflateBlockFixed {
@@ -524,7 +540,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 Some(DeflateBlock::Fixed(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_fixed(block, data)?;
+            parse_deflate_block_fixed(block, data, plain_pos)?;
         }
         2 => {
             out.push(DeflateBlock::Dynamic(Box::new(DeflateBlockDynamic {
@@ -547,7 +563,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 Some(DeflateBlock::Dynamic(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_dynamic(block, data)?;
+            parse_deflate_block_dynamic(block, data, plain_pos)?;
         }
         _ => return Err(data.parse_error(&format!("BTYPE={}", btype)))
     }
@@ -562,7 +578,8 @@ fn parse_deflate(out: &mut Option<DeflateStream>, data: &mut DataStream) -> Resu
         Some(x) => x,
         None => unreachable!()
     };
-    while parse_deflate_block(&mut deflate.blocks, data)? {}
+    let mut plain_pos: usize = 0;
+    while parse_deflate_block(&mut deflate.blocks, data, &mut plain_pos)? {}
     Ok(())
 }
 
@@ -598,7 +615,7 @@ pub fn parse(out: &mut Option<CompressedStream>, path: &Path) -> Result<(), Erro
         if data.pos == data.end {
             Ok(())
         } else {
-            Err(data.parse_error("Garbage"))
+            Err(data.parse_error(&format!("Garbage (end={})", data.end)))
         }
     } else {
         Err(data.parse_error("Stream type"))

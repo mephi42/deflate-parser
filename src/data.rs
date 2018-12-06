@@ -36,6 +36,7 @@ pub struct DeflateBlockStored {
     pub len: Option<Value<u16>>,
     pub nlen: Option<Value<u16>>,
     pub data: Option<Value<String>>,
+    pub plain_pos: Option<usize>,
 }
 
 #[derive(Serialize)]
@@ -93,7 +94,7 @@ pub enum HuffmanTree<T> {
 #[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Token {
-    Literal(u8),
-    Eob,
-    Window(u16, u8, u8, u16),
+    Literal(usize, u8),
+    Eob(usize),
+    Window(usize, u16, u8, u8, u16),
 }
