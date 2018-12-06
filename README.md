@@ -9,3 +9,4 @@ Parse deflate stream and print its JSON representation.
 ## Links
 
 * https://www.ietf.org/rfc/rfc1951.txt
+* https://zlib.net

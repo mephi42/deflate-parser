@@ -2,6 +2,7 @@ extern crate num;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
+extern crate sha2;
 
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
@@ -9,9 +10,10 @@ use std::mem::size_of;
 use std::path::Path;
 
 use num::PrimInt;
+use sha2::{Digest, Sha256};
 
-use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockHeader, DeflateStream,
-           GzipStream, HuffmanCode, HuffmanTree, Token, Value};
+use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockHeader,
+           DeflateBlockStored, DeflateStream, GzipStream, HuffmanCode, HuffmanTree, Token, Value};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -61,10 +63,14 @@ impl DataStream {
         })
     }
 
-    fn pop_le<T: PrimInt>(&mut self, out: &mut Option<Value<T>>) -> Result<(), Error> {
+    fn pop_le<'a, T: PrimInt>(&mut self, out: &'a mut Option<Value<T>>)
+                              -> Result<&'a Value<T>, Error> {
         *out = Some(self.peek_le::<T>()?);
         self.pos += size_of::<T>() * 8;
-        Ok(())
+        Ok(match out {
+            Some(x) => x,
+            None => unreachable!()
+        })
     }
 
     fn drop(&mut self, n: usize) -> Result<(), Error> {
@@ -102,6 +108,26 @@ impl DataStream {
         };
         self.pos += n;
         Ok(bits)
+    }
+
+    fn align(&mut self) -> Result<(), Error> {
+        let n = (8 - (self.pos & 7)) & 7;
+        self.drop(n)
+    }
+
+    fn pop_bytes(&mut self, out: &mut Option<Value<String>>, n: usize) -> Result<(), Error> {
+        let index = self.byte_index()?;
+        let bits = n * 8;
+        self.require(bits)?;
+        let mut h = Sha256::new();
+        h.input(&self.bytes[index..index + n]);
+        *out = Some(Value {
+            v: format!("sha256:{:x}", h.result()),
+            start: self.pos,
+            end: self.pos + bits,
+        });
+        self.pos += bits;
+        Ok(())
     }
 }
 
@@ -149,7 +175,7 @@ fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len:
         } else {
             Err(Error::Parse(ParseError {
                 pos,
-                msg: String::from("Not an empty leaf"),
+                msg: format!("Not an empty leaf (code={})", code),
             }))
         }
     } else {
@@ -162,7 +188,7 @@ fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len:
                 &mut children[bit], pos + 1, code, len - 1, symbol),
             _ => Err(Error::Parse(ParseError {
                 pos,
-                msg: String::from("Not a node"),
+                msg: format!("Not a node (code={})", code),
             })),
         }
     }
@@ -341,6 +367,16 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
     Ok(())
 }
 
+fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStream)
+                              -> Result<(), Error> {
+    // 3.2.4. Non-compressed blocks (BTYPE=00)
+    data.align()?;
+    let len = data.pop_le(&mut out.len)?;
+    data.pop_le(&mut out.nlen)?;
+    data.pop_bytes(&mut out.data, len.v as usize)?;
+    Ok(())
+}
+
 fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream)
                                -> Result<(), Error> {
     // 3.2.7. Compression with dynamic Huffman codes (BTYPE=10)
@@ -392,18 +428,35 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
     Ok(())
 }
 
-fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Result<(), Error> {
+fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Result<bool, Error> {
     let mut option_header: Option<DeflateBlockHeader> = None;
     parse_deflate_block_header(&mut option_header, data)?;
     let header = match option_header {
         Some(x) => x,
         None => unreachable!()
     };
+    let bfinal = match &header.bfinal {
+        Some(x) => x.v == 1,
+        _ => unreachable!()
+    };
     let btype = match &header.btype {
         Some(btype) => btype.v,
         None => unreachable!()
     };
     match btype {
+        0 => {
+            out.push(DeflateBlock::Stored(DeflateBlockStored {
+                header,
+                len: None,
+                nlen: None,
+                data: None,
+            }));
+            let block = match out.last_mut() {
+                Some(DeflateBlock::Stored(ref mut x)) => x,
+                _ => unreachable!()
+            };
+            parse_deflate_block_stored(block, data)?;
+        }
         2 => {
             out.push(DeflateBlock::Dynamic(DeflateBlockDynamic {
                 header,
@@ -426,10 +479,10 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 _ => unreachable!()
             };
             parse_deflate_block_dynamic(block, data)?;
-            Ok(())
         }
-        _ => Err(data.parse_error("BTYPE"))
+        _ => return Err(data.parse_error(&format!("BTYPE={}", btype)))
     }
+    Ok(!bfinal)
 }
 
 fn parse_deflate(out: &mut Option<DeflateStream>, data: &mut DataStream) -> Result<(), Error> {
@@ -440,7 +493,7 @@ fn parse_deflate(out: &mut Option<DeflateStream>, data: &mut DataStream) -> Resu
         Some(x) => x,
         None => unreachable!()
     };
-    parse_deflate_block(&mut deflate.blocks, data)?;
+    while parse_deflate_block(&mut deflate.blocks, data)? {}
     Ok(())
 }
 

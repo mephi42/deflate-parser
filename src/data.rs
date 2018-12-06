@@ -20,8 +20,18 @@ pub struct DeflateStream {
 }
 
 #[derive(Serialize)]
+#[serde(untagged)]
 pub enum DeflateBlock {
+    Stored(DeflateBlockStored),
     Dynamic(DeflateBlockDynamic),
+}
+
+#[derive(Serialize)]
+pub struct DeflateBlockStored {
+    pub header: DeflateBlockHeader,
+    pub len: Option<Value<u16>>,
+    pub nlen: Option<Value<u16>>,
+    pub data: Option<Value<String>>,
 }
 
 #[derive(Serialize)]
