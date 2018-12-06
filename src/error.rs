@@ -1,4 +1,5 @@
 #[derive(Serialize)]
+#[serde(untagged)]
 pub enum Error {
     Io(String),
     Parse(ParseError),

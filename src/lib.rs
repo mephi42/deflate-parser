@@ -174,9 +174,11 @@ fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len:
             *tree = HuffmanTree::Leaf(Some(symbol));
             Ok(())
         } else {
+            let mut bin = String::with_capacity(len);
+            code_to_bin(&mut bin, code, len);
             Err(Error::Parse(ParseError {
                 pos,
-                msg: format!("Not an empty leaf (code={})", code),
+                msg: format!("Not an empty leaf (code=0b{})", bin),
             }))
         }
     } else {
@@ -187,10 +189,14 @@ fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len:
         match tree {
             HuffmanTree::Node(children) => add_to_huffman_tree(
                 &mut children[bit], pos + 1, code, len - 1, symbol),
-            _ => Err(Error::Parse(ParseError {
-                pos,
-                msg: format!("Not a node (code={})", code),
-            })),
+            _ => {
+                let mut bin = String::with_capacity(len);
+                code_to_bin(&mut bin, code, len);
+                Err(Error::Parse(ParseError {
+                    pos,
+                    msg: format!("Not a node (code=0b{})", bin),
+                }))
+            }
         }
     }
 }
@@ -261,16 +267,22 @@ fn build_huffman_tree<'a, T: Clone>(out: &'a mut Option<HuffmanTree<T>>, codes: 
     Ok(tree)
 }
 
-fn parse_huffman_code<T: Clone>(data: &mut DataStream, tree: &HuffmanTree<T>, start: usize)
+fn parse_huffman_code<T: Clone>(data: &mut DataStream, tree: &HuffmanTree<T>, start: usize,
+                                code: u16, len: usize)
                                 -> Result<Value<T>, Error> {
     match tree {
         HuffmanTree::Node(children) => {
             let mut option_bit: Option<Value<usize>> = None;
             let bit = data.pop_bits(&mut option_bit, 1)?;
-            parse_huffman_code(data, &children[bit.v], start)
+            parse_huffman_code(data, &children[bit.v], start,
+                               (code << 1) | bit.v as u16, len + 1)
         }
         HuffmanTree::Leaf(Some(symbol)) => Ok(Value { v: symbol.clone(), start, end: data.pos }),
-        HuffmanTree::Leaf(None) => Err(data.parse_error("Code")),
+        HuffmanTree::Leaf(None) => {
+            let mut bin = String::with_capacity(len);
+            code_to_bin(&mut bin, code, len);
+            Err(data.parse_error(&format!("Code=0b{}", bin)))
+        }
     }
 }
 
@@ -285,7 +297,7 @@ fn parse_huffman_code_lengths<'a>(out: &'a mut Option<Vec<Value<u8>>>, data: &mu
     };
     while lens.len() < n {
         let start = data.pos;
-        let value = parse_huffman_code(data, tree, start)?;
+        let value = parse_huffman_code(data, tree, start, 0, 0)?;
         match value.v {
             0...15 => {
                 // 0 - 15: Represent code lengths of 0 - 15
@@ -345,7 +357,7 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
     let mut is_eob = false;
     while !is_eob {
         let start = data.pos;
-        let literal = parse_huffman_code(data, hlits_tree, start)?;
+        let literal = parse_huffman_code(data, hlits_tree, start, 0, 0)?;
         let v = match literal.v {
             0...255 => Token::Literal(literal.v as u8),
             256 => {
@@ -353,9 +365,20 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream,
                 Token::Eob
             }
             257...285 => {
+                let literal_extras = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
+                    3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
+                let distance_extras = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
+                    7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+                let mut option_literal_extra: Option<Value<u8>> = None;
+                let literal_extra = data.pop_bits(
+                    &mut option_literal_extra, literal_extras[literal.v as usize - 257])?;
                 let distance_start = data.pos;
-                let distance = parse_huffman_code(data, hdists_tree, distance_start)?;
-                Token::Window(literal.v, distance.v)
+                let distance = parse_huffman_code(
+                    data, hdists_tree, distance_start, 0, 0)?;
+                let mut option_distance_extra: Option<Value<u16>> = None;
+                let distance_extra = data.pop_bits(
+                    &mut option_distance_extra, distance_extras[distance.v as usize])?;
+                Token::Window(literal.v, literal_extra.v, distance.v, distance_extra.v)
             }
             _ => return Err(data.parse_error("Literal"))
         };
@@ -498,7 +521,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
             parse_deflate_block_fixed(block, data)?;
         }
         2 => {
-            out.push(DeflateBlock::Dynamic(DeflateBlockDynamic {
+            out.push(DeflateBlock::Dynamic(Box::new(DeflateBlockDynamic {
                 header,
                 hlit: None,
                 hdist: None,
@@ -513,7 +536,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 hdists_codes: None,
                 hdists_tree: None,
                 tokens: None,
-            }));
+            })));
             let block = match out.last_mut() {
                 Some(DeflateBlock::Dynamic(ref mut x)) => x,
                 _ => unreachable!()
@@ -550,6 +573,8 @@ pub fn parse(out: &mut Option<CompressedStream>, path: &Path) -> Result<(), Erro
             xflags: None,
             os: None,
             deflate: None,
+            checksum: None,
+            len: None
         }));
         let gzip = match out {
             Some(CompressedStream::Gzip(x)) => x,
@@ -561,7 +586,14 @@ pub fn parse(out: &mut Option<CompressedStream>, path: &Path) -> Result<(), Erro
         data.pop_le(&mut gzip.xflags)?;
         data.pop_le(&mut gzip.os)?;
         parse_deflate(&mut gzip.deflate, &mut data)?;
-        Ok(())
+        data.align()?;
+        data.pop_le(&mut gzip.checksum)?;
+        data.pop_le(&mut gzip.len)?;
+        if data.pos == data.end {
+            Ok(())
+        } else {
+            Err(data.parse_error("Garbage"))
+        }
     } else {
         Err(data.parse_error("Stream type"))
     }

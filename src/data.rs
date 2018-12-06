@@ -13,6 +13,8 @@ pub struct GzipStream {
     pub xflags: Option<Value<u8>>,
     pub os: Option<Value<u8>>,
     pub deflate: Option<DeflateStream>,
+    pub checksum: Option<Value<u32>>,
+    pub len: Option<Value<u32>>,
 }
 
 #[derive(Serialize)]
@@ -25,7 +27,7 @@ pub struct DeflateStream {
 pub enum DeflateBlock {
     Stored(DeflateBlockStored),
     Fixed(DeflateBlockFixed),
-    Dynamic(DeflateBlockDynamic),
+    Dynamic(Box<DeflateBlockDynamic>),
 }
 
 #[derive(Serialize)]
@@ -93,5 +95,5 @@ pub enum HuffmanTree<T> {
 pub enum Token {
     Literal(u8),
     Eob,
-    Window(u16, u8),
+    Window(u16, u8, u8, u16),
 }
