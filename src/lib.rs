@@ -12,8 +12,9 @@ use std::path::Path;
 use num::PrimInt;
 use sha2::{Digest, Sha256};
 
-use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockHeader,
-           DeflateBlockStored, DeflateStream, GzipStream, HuffmanCode, HuffmanTree, Token, Value};
+use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockFixed,
+           DeflateBlockHeader, DeflateBlockStored, DeflateStream, GzipStream, HuffmanCode,
+           HuffmanTree, Token, Value};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -377,6 +378,34 @@ fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStrea
     Ok(())
 }
 
+fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream)
+                             -> Result<(), Error> {
+    // Compression with fixed Huffman codes (BTYPE=01)
+    let v5 = Value { v: 7, start: data.pos, end: data.pos };
+    let v7 = Value { v: 7, start: data.pos, end: data.pos };
+    let v8 = Value { v: 8, start: data.pos, end: data.pos };
+    let v9 = Value { v: 9, start: data.pos, end: data.pos };
+    let hlits = std::iter::repeat(v8.clone()).take((0u16..=143).len())
+        .chain(std::iter::repeat(v9.clone()).take((144u16..=255).len()))
+        .chain(std::iter::repeat(v7.clone()).take((256u16..=279).len()))
+        .chain(std::iter::repeat(v8.clone()).take((280u16..=287).len()))
+        .collect::<Vec<Value<u8>>>();
+    let hlits_codes = build_huffman_codes(
+        &(0..=285).collect::<Vec<u16>>(), &hlits);
+    let mut option_hlits_tree: Option<HuffmanTree<u16>> = None;
+    let hlits_tree = build_huffman_tree(
+        &mut option_hlits_tree, &hlits_codes)?;
+    let hdists = std::iter::repeat(v5.clone()).take((0u8..=31).len())
+        .collect::<Vec<Value<u8>>>();
+    let hdists_codes = build_huffman_codes(
+        &(0..=31).collect::<Vec<u8>>(), &hdists);
+    let mut option_hdists_tree: Option<HuffmanTree<u8>> = None;
+    let hdists_tree = build_huffman_tree(
+        &mut option_hdists_tree, &hdists_codes)?;
+    parse_tokens(&mut out.tokens, data, &hlits_tree, &hdists_tree)?;
+    Ok(())
+}
+
 fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream)
                                -> Result<(), Error> {
     // 3.2.7. Compression with dynamic Huffman codes (BTYPE=10)
@@ -456,6 +485,17 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                 _ => unreachable!()
             };
             parse_deflate_block_stored(block, data)?;
+        }
+        1 => {
+            out.push(DeflateBlock::Fixed(DeflateBlockFixed {
+                header,
+                tokens: None,
+            }));
+            let block = match out.last_mut() {
+                Some(DeflateBlock::Fixed(ref mut x)) => x,
+                _ => unreachable!()
+            };
+            parse_deflate_block_fixed(block, data)?;
         }
         2 => {
             out.push(DeflateBlock::Dynamic(DeflateBlockDynamic {

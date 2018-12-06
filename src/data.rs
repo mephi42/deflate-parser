@@ -1,4 +1,5 @@
 #[derive(Serialize)]
+#[serde(untagged)]
 pub enum CompressedStream {
     Gzip(GzipStream),
 }
@@ -23,6 +24,7 @@ pub struct DeflateStream {
 #[serde(untagged)]
 pub enum DeflateBlock {
     Stored(DeflateBlockStored),
+    Fixed(DeflateBlockFixed),
     Dynamic(DeflateBlockDynamic),
 }
 
@@ -32,6 +34,12 @@ pub struct DeflateBlockStored {
     pub len: Option<Value<u16>>,
     pub nlen: Option<Value<u16>>,
     pub data: Option<Value<String>>,
+}
+
+#[derive(Serialize)]
+pub struct DeflateBlockFixed {
+    pub header: DeflateBlockHeader,
+    pub tokens: Option<Vec<Value<Token>>>,
 }
 
 #[derive(Serialize)]
