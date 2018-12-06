@@ -4,6 +4,7 @@ extern crate serde_derive;
 extern crate serde_json;
 extern crate sha2;
 
+use std::fmt::Debug;
 use std::fs::File;
 use std::io::{Read, Seek, SeekFrom};
 use std::mem::size_of;
@@ -167,18 +168,17 @@ impl<T> HuffmanTree<T> {
     }
 }
 
-fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len: usize, symbol: T)
-                          -> Result<(), Error> {
+fn add_to_huffman_tree<T: Debug>(tree: &mut HuffmanTree<T>, pos: usize,
+                                 code: u16, len: usize, symbol: T)
+                                 -> Result<(), Error> {
     if len == 0 {
         if tree.is_empty_leaf() {
             *tree = HuffmanTree::Leaf(Some(symbol));
             Ok(())
         } else {
-            let mut bin = String::with_capacity(len);
-            code_to_bin(&mut bin, code, len);
             Err(Error::Parse(ParseError {
                 pos,
-                msg: format!("Not an empty leaf (code=0b{})", bin),
+                msg: format!("Not an empty leaf (symbol={:?})", symbol),
             }))
         }
     } else {
@@ -190,11 +190,14 @@ fn add_to_huffman_tree<T>(tree: &mut HuffmanTree<T>, pos: usize, code: u16, len:
             HuffmanTree::Node(children) => add_to_huffman_tree(
                 &mut children[bit], pos + 1, code, len - 1, symbol),
             _ => {
-                let mut bin = String::with_capacity(len);
-                code_to_bin(&mut bin, code, len);
                 Err(Error::Parse(ParseError {
                     pos,
-                    msg: format!("Not a node (code=0b{})", bin),
+                    msg: match tree {
+                        HuffmanTree::Leaf(Some(old_symbol)) =>
+                            format!("Conflict (symbol={:?} and {:?})", old_symbol, symbol),
+                        _ =>
+                            format!("Conflict (symbol={:?})", symbol),
+                    },
                 }))
             }
         }
@@ -252,8 +255,9 @@ fn build_huffman_codes<T: Clone + Ord>(alphabet: &[T], lens: &[Value<u8>]) -> Ve
     codes
 }
 
-fn build_huffman_tree<'a, T: Clone>(out: &'a mut Option<HuffmanTree<T>>, codes: &[HuffmanCode<T>])
-                                    -> Result<&'a HuffmanTree<T>, Error> {
+fn build_huffman_tree<'a, T: Clone + Debug>(out: &'a mut Option<HuffmanTree<T>>,
+                                            codes: &[HuffmanCode<T>])
+                                            -> Result<&'a HuffmanTree<T>, Error> {
     *out = Some(HuffmanTree::Leaf(None));
     let tree = match out {
         Some(ref mut x) => x,
@@ -307,7 +311,8 @@ fn parse_huffman_code_lengths<'a>(out: &'a mut Option<Vec<Value<u8>>>, data: &mu
                 let (what, start, repeat_add, repeat_len) = match value.v {
                     // 16: Copy the previous code length 3 - 6 times
                     16 => {
-                        let last = lens.last().ok_or_else(|| data.parse_error("Repeat"))?;
+                        let last = lens.last().ok_or_else(
+                            || data.parse_error("Repeat"))?;
                         (last.v, last.start, 3, 2)
                     }
                     // 17: Repeat a code length of 0 for 3 - 10 times
@@ -329,7 +334,11 @@ fn parse_huffman_code_lengths<'a>(out: &'a mut Option<Vec<Value<u8>>>, data: &mu
             _ => return Err(data.parse_error("Code length"))
         }
     }
-    Ok(lens)
+    if lens.len() == n {
+        Ok(lens)
+    } else {
+        Err(data.parse_error("Code lengths"))
+    }
 }
 
 fn parse_deflate_block_header(out: &mut Option<DeflateBlockHeader>, data: &mut DataStream)
@@ -433,9 +442,12 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
                                -> Result<(), Error> {
     // 3.2.7. Compression with dynamic Huffman codes (BTYPE=10)
     // 5 Bits: HLIT, # of Literal/Length codes - 257 (257 - 286)
-    data.pop_bits(&mut out.hlit, 5)?;
+    let hlit = data.pop_bits(&mut out.hlit, 5)?;
+    if hlit.v > 29 {
+        return Err(data.parse_error("HLIT > 29"));
+    }
     // 5 Bits: HDIST, # of Distance codes - 1        (1 - 32)
-    data.pop_bits(&mut out.hdist, 5)?;
+    let hdist = data.pop_bits(&mut out.hdist, 5)?;
     // 4 Bits: HCLEN, # of Code Length codes - 4     (4 - 19)
     let hclen = data.pop_bits(&mut out.hclen, 4)?;
     // (HCLEN + 4) x 3 bits: code lengths for the code length alphabet
@@ -450,26 +462,20 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
         None => unreachable!()
     };
     // HLIT + 257 code lengths for the literal/length alphabet
-    let hlits = match &out.hlit {
-        Some(hlit) => parse_huffman_code_lengths(
-            &mut out.hlits, data, (hlit.v as usize) + 257, &hclens_tree)?,
-        None => unreachable!()
-    };
+    // HDIST + 1 code lengths for the distance alphabet
+    let hlits_count = (hlit.v as usize) + 257;
+    let hdists_count = (hdist.v as usize) + 1;
+    let hlits_hdists = parse_huffman_code_lengths(
+        &mut out.hlits, data, hlits_count + hdists_count, &hclens_tree)?;
     out.hlits_codes = Some(build_huffman_codes(
-        &(0..=285).collect::<Vec<u16>>(), &hlits));
+        &(0..=285).collect::<Vec<u16>>(), &hlits_hdists[..hlits_count]));
     let hlits_tree = match &out.hlits_codes {
         Some(hlits_codes) => build_huffman_tree(
             &mut out.hlits_tree, &hlits_codes)?,
         None => unreachable!()
     };
-    // HDIST + 1 code lengths for the distance alphabet
-    let hdists = match &out.hdist {
-        Some(hdist) => parse_huffman_code_lengths(
-            &mut out.hdists, data, (hdist.v as usize) + 1, &hclens_tree)?,
-        None => unreachable!()
-    };
     out.hdists_codes = Some(build_huffman_codes(
-        &(0..=29).collect::<Vec<u8>>(), &hdists));
+        &(0..=29).collect::<Vec<u8>>(), &hlits_hdists[hlits_count..]));
     let hdists_tree = match &out.hdists_codes {
         Some(hdists_codes) => build_huffman_tree(&mut out.hdists_tree, &hdists_codes)?,
         None => unreachable!()
@@ -574,7 +580,7 @@ pub fn parse(out: &mut Option<CompressedStream>, path: &Path) -> Result<(), Erro
             os: None,
             deflate: None,
             checksum: None,
-            len: None
+            len: None,
         }));
         let gzip = match out {
             Some(CompressedStream::Gzip(x)) => x,
