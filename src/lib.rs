@@ -263,13 +263,16 @@ fn parse_code_lengths(data: &mut DataStream, n: usize, tree: &HuffmanTree<u8>)
                 result.push(value)
             }
             16...18 => {
-                let (what, repeat_add, repeat_len) = match value.v {
+                let (what, start, repeat_add, repeat_len) = match value.v {
                     // 16: Copy the previous code length 3 - 6 times
-                    16 => (result.last().ok_or_else(|| data.parse_error("Repeat"))?.v, 3, 2),
+                    16 => {
+                        let last = result.last().ok_or_else(|| data.parse_error("Repeat"))?;
+                        (last.v, last.start, 3, 2)
+                    }
                     // 17: Repeat a code length of 0 for 3 - 10 times
-                    17 => (0, 3, 3),
+                    17 => (0, value.start, 3, 3),
                     // 18: Repeat a code length of 0 for 11 - 138 times
-                    18 => (0, 11, 7),
+                    18 => (0, value.start, 11, 7),
                     _ => unreachable!()
                 };
                 let mut option_repeat: Option<Value<usize>> = None;
@@ -277,7 +280,7 @@ fn parse_code_lengths(data: &mut DataStream, n: usize, tree: &HuffmanTree<u8>)
                 for _ in 0..(repeat_add + repeat.v) {
                     result.push(Value {
                         v: what,
-                        start: value.start,
+                        start,
                         end: repeat.end,
                     });
                 }
@@ -338,6 +341,21 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
             &mut out.hlits_tree, &hlits_codes)?,
         None => unreachable!()
     };
+    // HDIST + 1 code lengths for the distance alphabet
+    match &out.hdist {
+        Some(hdist) => out.hdists = Some(parse_code_lengths(
+            data, (hdist.v as usize) + 1, &hclens_tree)?),
+        None => unreachable!()
+    }
+    match &out.hdists {
+        Some(hdists) => out.hdists_codes = Some(build_huffman_codes(
+            &(0..=29).collect::<Vec<u16>>(), &hdists)),
+        None => unreachable!()
+    }
+    let _hdists_tree = match &out.hdists_codes {
+        Some(hdists_codes) => build_huffman_tree(&mut out.hdists_tree, &hdists_codes)?,
+        None => unreachable!()
+    };
     Ok(())
 }
 
@@ -363,6 +381,9 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream) -> Re
                         hlits: None,
                         hlits_codes: None,
                         hlits_tree: None,
+                        hdists: None,
+                        hdists_codes: None,
+                        hdists_tree: None,
                     }));
                     match out.last_mut() {
                         Some(DeflateBlock::Dynamic(ref mut block)) => {

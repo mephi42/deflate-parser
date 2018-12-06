@@ -36,6 +36,9 @@ pub struct DeflateBlockDynamic {
     pub hlits: Option<Vec<Value<u8>>>,
     pub hlits_codes: Option<Vec<HuffmanCode<u16>>>,
     pub hlits_tree: Option<HuffmanTree<u16>>,
+    pub hdists: Option<Vec<Value<u8>>>,
+    pub hdists_codes: Option<Vec<HuffmanCode<u16>>>,
+    pub hdists_tree: Option<HuffmanTree<u16>>,
 }
 
 #[derive(Serialize)]
