@@ -14,6 +14,9 @@ fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
+        .arg(Arg::with_name("output")
+            .long("output")
+            .takes_value(true))
         .arg(Arg::with_name("bit-offset")
             .long("bit-offset")
             .takes_value(true))
@@ -25,7 +28,7 @@ fn main() {
         .get_matches();
     let bit_offset = match matches.value_of("bit-offset") {
         Some(bit_offset_str) => match bit_offset_str.parse::<usize>() {
-            Ok(bit_offset) => bit_offset,
+            Ok(x) => x,
             Err(err) => {
                 eprintln!("{}", err);
                 ::std::process::exit(1);
@@ -33,16 +36,33 @@ fn main() {
         }
         None => 0
     };
+    let mut output: Box<std::io::Write> = match matches.value_of("output") {
+        Some(output_path) => match std::fs::File::create(output_path) {
+            Ok(x) => Box::new(x),
+            Err(err) => {
+                eprintln!("{}", err);
+                ::std::process::exit(1);
+            }
+        },
+        None => Box::new(std::io::stdout())
+    };
     let raw = matches.is_present("raw");
     let file = matches.value_of("FILE").unwrap();
     let mut stream: Option<CompressedStream> = None;
     let result = parse(&mut stream, Path::new(file), bit_offset, raw);
-    println!("{}", serde_json::to_string_pretty(&stream).expect("to_string_pretty"));
+    let out_json = serde_json::to_string_pretty(&stream).expect("to_string_pretty");
+    match write!(output, "{}", out_json) {
+        Ok(_) => {}
+        Err(err) => {
+            eprintln!("{}", err);
+            ::std::process::exit(1);
+        }
+    };
     match result {
         Ok(()) => {}
         Err(err) => {
-            eprintln!(
-                "{}", serde_json::to_string_pretty(&err).expect("to_string_pretty"));
+            let err_json = serde_json::to_string_pretty(&err).expect("to_string_pretty");
+            eprintln!("{}", err_json);
             ::std::process::exit(1);
         }
     }
