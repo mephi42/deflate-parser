@@ -387,14 +387,15 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
                 let literal_index = literal.v as usize - 257;
                 let literal_extra = data.pop_bits(
                     &mut option_literal_extra, literal_extras[literal_index])?;
-                *plain_pos += literal_bases[literal_index] + literal_extra.v as usize;
+                let len = literal_bases[literal_index] + literal_extra.v as usize;
+                *plain_pos += len;
                 let distance_start = data.pos;
                 let distance = parse_huffman_code(
                     data, hdists_tree, distance_start, 0, 0)?;
                 let mut option_distance_extra: Option<Value<u16>> = None;
                 let distance_extra = data.pop_bits(
                     &mut option_distance_extra, distance_extras[distance.v as usize])?;
-                Token::Window(*plain_pos, literal.v, literal_extra.v,
+                Token::Window(*plain_pos - len, literal.v, literal_extra.v,
                               distance.v, distance_extra.v)
             }
             _ => return Err(data.parse_error("Literal"))
