@@ -22,14 +22,14 @@ pub mod error;
 pub mod data;
 
 impl DataStream {
-    fn new(path: &Path) -> Result<DataStream, Error> {
+    fn new(path: &Path, pos: usize) -> Result<DataStream, Error> {
         let mut f = File::open(path)?;
         let len: usize = f.seek(SeekFrom::End(0))? as usize;
         f.seek(SeekFrom::Start(0))?;
         let mut bytes = Vec::new();
         bytes.resize(len as usize, 0);
         f.read_exact(&mut bytes)?;
-        Ok(DataStream { bytes, pos: 0, end: len * 8 })
+        Ok(DataStream { bytes, pos, end: len * 8 })
     }
 
     fn require(&self, n: usize) -> Result<(), Error> {
@@ -571,54 +571,65 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
     Ok(!bfinal)
 }
 
-fn parse_deflate(out: &mut Option<DeflateStream>, data: &mut DataStream) -> Result<(), Error> {
-    *out = Some(DeflateStream {
-        blocks: Vec::new(),
-    });
-    let deflate = match out {
-        Some(x) => x,
-        None => unreachable!()
-    };
+fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream) -> Result<(), Error> {
     let mut plain_pos: usize = 0;
     while parse_deflate_block(&mut deflate.blocks, data, &mut plain_pos)? {}
     Ok(())
 }
 
-pub fn parse(out: &mut Option<CompressedStream>, path: &Path) -> Result<(), Error> {
-    let mut data = DataStream::new(path)?;
-    let magic = data.peek_le::<u16>()?;
-    if magic.v == 0x8b1f {
-        data.drop(16)?;
-        *out = Some(CompressedStream::Gzip(GzipStream {
-            magic,
-            method: None,
-            flags: None,
-            time: None,
-            xflags: None,
-            os: None,
-            deflate: None,
-            checksum: None,
-            len: None,
+pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize, raw: bool)
+             -> Result<(), Error> {
+    let mut data = DataStream::new(path, bit_offset)?;
+    if raw {
+        *out = Some(CompressedStream::Raw(DeflateStream {
+            blocks: Vec::new(),
         }));
-        let gzip = match out {
-            Some(CompressedStream::Gzip(x)) => x,
+        match out {
+            Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data)?,
             _ => unreachable!()
         };
-        data.pop_le(&mut gzip.method)?;
-        data.pop_le(&mut gzip.flags)?;
-        data.pop_le(&mut gzip.time)?;
-        data.pop_le(&mut gzip.xflags)?;
-        data.pop_le(&mut gzip.os)?;
-        parse_deflate(&mut gzip.deflate, &mut data)?;
-        data.align()?;
-        data.pop_le(&mut gzip.checksum)?;
-        data.pop_le(&mut gzip.len)?;
-        if data.pos == data.end {
-            Ok(())
-        } else {
-            Err(data.parse_error(&format!("Garbage (end={})", data.end)))
-        }
+        Ok(())
     } else {
-        Err(data.parse_error("Stream type"))
+        let magic = data.peek_le::<u16>()?;
+        if magic.v == 0x8b1f {
+            data.drop(16)?;
+            *out = Some(CompressedStream::Gzip(Box::new(GzipStream {
+                magic,
+                method: None,
+                flags: None,
+                time: None,
+                xflags: None,
+                os: None,
+                deflate: None,
+                checksum: None,
+                len: None,
+            })));
+            let gzip = match out {
+                Some(CompressedStream::Gzip(x)) => x,
+                _ => unreachable!()
+            };
+            data.pop_le(&mut gzip.method)?;
+            data.pop_le(&mut gzip.flags)?;
+            data.pop_le(&mut gzip.time)?;
+            data.pop_le(&mut gzip.xflags)?;
+            data.pop_le(&mut gzip.os)?;
+            gzip.deflate = Some(DeflateStream {
+                blocks: Vec::new(),
+            });
+            match &mut gzip.deflate {
+                Some(deflate) => parse_deflate(deflate, &mut data)?,
+                None => unreachable!()
+            }
+            data.align()?;
+            data.pop_le(&mut gzip.checksum)?;
+            data.pop_le(&mut gzip.len)?;
+            if data.pos == data.end {
+                Ok(())
+            } else {
+                Err(data.parse_error(&format!("Garbage (end={})", data.end)))
+            }
+        } else {
+            Err(data.parse_error("Stream type"))
+        }
     }
 }

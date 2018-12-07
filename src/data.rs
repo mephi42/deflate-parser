@@ -1,7 +1,8 @@
 #[derive(Serialize)]
 #[serde(untagged)]
 pub enum CompressedStream {
-    Gzip(GzipStream),
+    Raw(DeflateStream),
+    Gzip(Box<GzipStream>),
 }
 
 #[derive(Serialize)]
