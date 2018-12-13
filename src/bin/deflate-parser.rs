@@ -6,7 +6,7 @@ use std::path::Path;
 
 use clap::{App, Arg};
 
-use deflate_parser::data::CompressedStream;
+use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable};
 use deflate_parser::parse;
 
 fn main() {
@@ -22,6 +22,9 @@ fn main() {
             .takes_value(true))
         .arg(Arg::with_name("raw")
             .long("raw"))
+        .arg(Arg::with_name("dht")
+            .long("dht")
+            .conflicts_with("raw"))
         .arg(Arg::with_name("FILE")
             .required(true)
             .index(1))
@@ -47,9 +50,16 @@ fn main() {
         None => Box::new(std::io::stdout())
     };
     let raw = matches.is_present("raw");
+    let dht = matches.is_present("dht");
     let file = matches.value_of("FILE").unwrap();
-    let mut stream: Option<CompressedStream> = None;
-    let result = parse(&mut stream, Path::new(file), bit_offset, raw);
+    let mut stream: Option<CompressedStream> = if raw {
+        Some(CompressedStream::Raw(DeflateStream::default()))
+    } else if dht {
+        Some(CompressedStream::Dht(Box::new(DynamicHuffmanTable::default())))
+    } else {
+        None
+    };
+    let result = parse(&mut stream, Path::new(file), bit_offset);
     let out_json = serde_json::to_string_pretty(&stream).expect("to_string_pretty");
     match write!(output, "{}", out_json) {
         Ok(_) => {}

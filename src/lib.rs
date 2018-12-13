@@ -14,8 +14,8 @@ use num::PrimInt;
 use sha2::{Digest, Sha256};
 
 use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockFixed,
-           DeflateBlockHeader, DeflateBlockStored, DeflateStream, GzipStream, HuffmanCode,
-           HuffmanTree, Token, Value};
+           DeflateBlockHeader, DeflateBlockStored, DeflateStream, DynamicHuffmanTable, GzipStream,
+           HuffmanCode, HuffmanTree, Token, Value};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -452,9 +452,8 @@ fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
     Ok(())
 }
 
-fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream,
-                               plain_pos: &mut usize)
-                               -> Result<(), Error> {
+fn parse_dht(out: &mut DynamicHuffmanTable, data: &mut DataStream)
+             -> Result<(), Error> {
     // 3.2.7. Compression with dynamic Huffman codes (BTYPE=10)
     // 5 Bits: HLIT, # of Literal/Length codes - 257 (257 - 286)
     let hlit = data.pop_bits(&mut out.hlit, 5)?;
@@ -484,15 +483,35 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
         &mut out.hlits, data, hlits_count + hdists_count, &hclens_tree)?;
     out.hlits_codes = Some(build_huffman_codes(
         &(0..=285).collect::<Vec<u16>>(), &hlits_hdists[..hlits_count]));
-    let hlits_tree = match &out.hlits_codes {
+    match &out.hlits_codes {
         Some(hlits_codes) => build_huffman_tree(
             &mut out.hlits_tree, &hlits_codes)?,
         None => unreachable!()
     };
     out.hdists_codes = Some(build_huffman_codes(
         &(0..=29).collect::<Vec<u8>>(), &hlits_hdists[hlits_count..]));
-    let hdists_tree = match &out.hdists_codes {
+    match &out.hdists_codes {
         Some(hdists_codes) => build_huffman_tree(&mut out.hdists_tree, &hdists_codes)?,
+        None => unreachable!()
+    };
+    Ok(())
+}
+
+fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream,
+                               plain_pos: &mut usize)
+                               -> Result<(), Error> {
+    out.dht = Some(DynamicHuffmanTable::default());
+    let dht = match &mut out.dht {
+        Some(x) => x,
+        None => unreachable!()
+    };
+    parse_dht(dht, data)?;
+    let hlits_tree = match &dht.hlits_tree {
+        Some(x) => x,
+        None => unreachable!()
+    };
+    let hdists_tree = match &dht.hdists_tree {
+        Some(x) => x,
         None => unreachable!()
     };
     // The actual compressed data of the block
@@ -546,18 +565,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
         2 => {
             out.push(DeflateBlock::Dynamic(Box::new(DeflateBlockDynamic {
                 header,
-                hlit: None,
-                hdist: None,
-                hclen: None,
-                hclens: None,
-                hclens_codes: None,
-                hclens_tree: None,
-                hlits: None,
-                hlits_codes: None,
-                hlits_tree: None,
-                hdists: None,
-                hdists_codes: None,
-                hdists_tree: None,
+                dht: None,
                 tokens: None,
             })));
             let block = match out.last_mut() {
@@ -577,59 +585,51 @@ fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream) -> Result<(
     Ok(())
 }
 
-pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize, raw: bool)
+pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
              -> Result<(), Error> {
     let mut data = DataStream::new(path, bit_offset)?;
-    if raw {
-        *out = Some(CompressedStream::Raw(DeflateStream {
-            blocks: Vec::new(),
-        }));
-        match out {
-            Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data)?,
+    match out {
+        Some(CompressedStream::Raw(deflate)) => return parse_deflate(deflate, &mut data),
+        Some(CompressedStream::Dht(dht)) => return parse_dht(dht, &mut data),
+        _ => {}
+    };
+    let magic = data.peek_le::<u16>()?;
+    if magic.v == 0x8b1f {
+        data.drop(16)?;
+        *out = Some(CompressedStream::Gzip(Box::new(GzipStream {
+            magic,
+            method: None,
+            flags: None,
+            time: None,
+            xflags: None,
+            os: None,
+            deflate: None,
+            checksum: None,
+            len: None,
+        })));
+        let gzip = match out {
+            Some(CompressedStream::Gzip(x)) => x,
             _ => unreachable!()
         };
-        Ok(())
-    } else {
-        let magic = data.peek_le::<u16>()?;
-        if magic.v == 0x8b1f {
-            data.drop(16)?;
-            *out = Some(CompressedStream::Gzip(Box::new(GzipStream {
-                magic,
-                method: None,
-                flags: None,
-                time: None,
-                xflags: None,
-                os: None,
-                deflate: None,
-                checksum: None,
-                len: None,
-            })));
-            let gzip = match out {
-                Some(CompressedStream::Gzip(x)) => x,
-                _ => unreachable!()
-            };
-            data.pop_le(&mut gzip.method)?;
-            data.pop_le(&mut gzip.flags)?;
-            data.pop_le(&mut gzip.time)?;
-            data.pop_le(&mut gzip.xflags)?;
-            data.pop_le(&mut gzip.os)?;
-            gzip.deflate = Some(DeflateStream {
-                blocks: Vec::new(),
-            });
-            match &mut gzip.deflate {
-                Some(deflate) => parse_deflate(deflate, &mut data)?,
-                None => unreachable!()
-            }
-            data.align()?;
-            data.pop_le(&mut gzip.checksum)?;
-            data.pop_le(&mut gzip.len)?;
-            if data.pos == data.end {
-                Ok(())
-            } else {
-                Err(data.parse_error(&format!("Garbage (end={})", data.end)))
-            }
-        } else {
-            Err(data.parse_error("Stream type"))
+        data.pop_le(&mut gzip.method)?;
+        data.pop_le(&mut gzip.flags)?;
+        data.pop_le(&mut gzip.time)?;
+        data.pop_le(&mut gzip.xflags)?;
+        data.pop_le(&mut gzip.os)?;
+        gzip.deflate = Some(DeflateStream::default());
+        match &mut gzip.deflate {
+            Some(deflate) => parse_deflate(deflate, &mut data)?,
+            None => unreachable!()
         }
+        data.align()?;
+        data.pop_le(&mut gzip.checksum)?;
+        data.pop_le(&mut gzip.len)?;
+        if data.pos == data.end {
+            Ok(())
+        } else {
+            Err(data.parse_error(&format!("Garbage (end={})", data.end)))
+        }
+    } else {
+        Err(data.parse_error("Stream type"))
     }
 }

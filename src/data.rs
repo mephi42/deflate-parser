@@ -3,6 +3,7 @@
 pub enum CompressedStream {
     Raw(DeflateStream),
     Gzip(Box<GzipStream>),
+    Dht(Box<DynamicHuffmanTable>),
 }
 
 #[derive(Serialize)]
@@ -18,7 +19,7 @@ pub struct GzipStream {
     pub len: Option<Value<u32>>,
 }
 
-#[derive(Serialize)]
+#[derive(Default, Serialize)]
 pub struct DeflateStream {
     pub blocks: Vec<DeflateBlock>,
 }
@@ -46,9 +47,8 @@ pub struct DeflateBlockFixed {
     pub tokens: Option<Vec<Value<Token>>>,
 }
 
-#[derive(Serialize)]
-pub struct DeflateBlockDynamic {
-    pub header: DeflateBlockHeader,
+#[derive(Default, Serialize)]
+pub struct DynamicHuffmanTable {
     pub hlit: Option<Value<u8>>,
     pub hdist: Option<Value<u8>>,
     pub hclen: Option<Value<u8>>,
@@ -61,6 +61,12 @@ pub struct DeflateBlockDynamic {
     pub hdists: Option<Vec<Value<u8>>>,
     pub hdists_codes: Option<Vec<HuffmanCode<u8>>>,
     pub hdists_tree: Option<HuffmanTree<u8>>,
+}
+
+#[derive(Serialize)]
+pub struct DeflateBlockDynamic {
+    pub header: DeflateBlockHeader,
+    pub dht: Option<DynamicHuffmanTable>,
     pub tokens: Option<Vec<Value<Token>>>,
 }
 
