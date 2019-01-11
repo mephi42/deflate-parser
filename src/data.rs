@@ -4,6 +4,7 @@ pub enum CompressedStream {
     Raw(DeflateStream),
     Gzip(Box<GzipStream>),
     Dht(Box<DynamicHuffmanTable>),
+    Zlib(ZlibStream),
 }
 
 #[derive(Serialize)]
@@ -17,6 +18,14 @@ pub struct GzipStream {
     pub deflate: Option<DeflateStream>,
     pub checksum: Option<Value<u32>>,
     pub len: Option<Value<u32>>,
+}
+
+#[derive(Default, Serialize)]
+pub struct ZlibStream {
+    pub cmf: Option<Value<u8>>,
+    pub flg: Option<Value<u8>>,
+    pub deflate: Option<DeflateStream>,
+    pub adler32: Option<Value<u32>>,
 }
 
 #[derive(Default, Serialize)]
@@ -80,7 +89,7 @@ pub struct DeflateBlockHeader {
 pub struct Value<T: Clone> {
     pub v: T,
     pub start: usize,
-    pub end: usize,
+    pub end: usize,  // non-inclusive
 }
 
 #[derive(Serialize)]

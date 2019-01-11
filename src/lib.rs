@@ -15,7 +15,7 @@ use sha2::{Digest, Sha256};
 
 use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockFixed,
            DeflateBlockHeader, DeflateBlockStored, DeflateStream, DynamicHuffmanTable, GzipStream,
-           HuffmanCode, HuffmanTree, Token, Value};
+           HuffmanCode, HuffmanTree, Token, Value, ZlibStream};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -585,12 +585,25 @@ fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream) -> Result<(
     Ok(())
 }
 
+fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream) -> Result<(), Error> {
+    data.pop_le(&mut zlib.cmf)?;
+    data.pop_le(&mut zlib.flg)?;
+    zlib.deflate = Some(DeflateStream::default());
+    match &mut zlib.deflate {
+        Some(deflate) => parse_deflate(deflate, data)?,
+        None => unreachable!()
+    }
+    data.pop_le(&mut zlib.adler32)?;
+    Ok(())
+}
+
 pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
              -> Result<(), Error> {
     let mut data = DataStream::new(path, bit_offset)?;
     match out {
         Some(CompressedStream::Raw(deflate)) => return parse_deflate(deflate, &mut data),
         Some(CompressedStream::Dht(dht)) => return parse_dht(dht, &mut data),
+        Some(CompressedStream::Zlib(zlib)) => return parse_zlib(zlib, &mut data),
         _ => {}
     };
     let magic = data.peek_le::<u16>()?;

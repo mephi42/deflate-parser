@@ -6,7 +6,7 @@ use std::path::Path;
 
 use clap::{App, Arg};
 
-use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable};
+use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable, ZlibStream};
 use deflate_parser::parse;
 
 fn main() {
@@ -25,6 +25,9 @@ fn main() {
         .arg(Arg::with_name("dht")
             .long("dht")
             .conflicts_with("raw"))
+        .arg(Arg::with_name("zlib")
+            .long("zlib")
+            .conflicts_with_all(&["raw", "dht"]))
         .arg(Arg::with_name("FILE")
             .required(true)
             .index(1))
@@ -51,11 +54,14 @@ fn main() {
     };
     let raw = matches.is_present("raw");
     let dht = matches.is_present("dht");
+    let zlib = matches.is_present("zlib");
     let file = matches.value_of("FILE").unwrap();
     let mut stream: Option<CompressedStream> = if raw {
         Some(CompressedStream::Raw(DeflateStream::default()))
     } else if dht {
         Some(CompressedStream::Dht(Box::new(DynamicHuffmanTable::default())))
+    } else if zlib {
+        Some(CompressedStream::Zlib(ZlibStream::default()))
     } else {
         None
     };
