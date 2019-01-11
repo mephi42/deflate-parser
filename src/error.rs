@@ -1,11 +1,11 @@
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 #[serde(untagged)]
 pub enum Error {
     Io(String),
     Parse(ParseError),
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct ParseError {
     pub pos: usize,
     pub msg: String,

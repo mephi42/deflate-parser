@@ -23,7 +23,10 @@ pub mod data;
 
 impl DataStream {
     fn new(path: &Path, pos: usize) -> Result<DataStream, Error> {
-        let mut f = File::open(path)?;
+        DataStream::new_from_file(File::open(path)?, pos)
+    }
+
+    fn new_from_file(mut f: File, pos: usize) -> Result<DataStream, Error> {
         let len: usize = f.seek(SeekFrom::End(0))? as usize;
         f.seek(SeekFrom::Start(0))?;
         let mut bytes = Vec::new();
@@ -597,9 +600,8 @@ fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream) -> Result<(), Error>
     Ok(())
 }
 
-pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
-             -> Result<(), Error> {
-    let mut data = DataStream::new(path, bit_offset)?;
+fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
+                     -> Result<(), Error> {
     match out {
         Some(CompressedStream::Raw(deflate)) => return parse_deflate(deflate, &mut data),
         Some(CompressedStream::Dht(dht)) => return parse_dht(dht, &mut data),
@@ -645,4 +647,14 @@ pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
     } else {
         Err(data.parse_error("Stream type"))
     }
+}
+
+pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
+             -> Result<(), Error> {
+    parse_data_stream(out, DataStream::new(path, bit_offset)?)
+}
+
+pub fn parse_file(out: &mut Option<CompressedStream>, file: File, bit_offset: usize)
+                  -> Result<(), Error> {
+    parse_data_stream(out, DataStream::new_from_file(file, bit_offset)?)
 }
