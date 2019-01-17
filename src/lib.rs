@@ -596,18 +596,12 @@ fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream) -> Result<(), Error>
         Some(deflate) => parse_deflate(deflate, data)?,
         None => unreachable!()
     }
+    data.align()?;
     data.pop_le(&mut zlib.adler32)?;
     Ok(())
 }
 
-fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
-                     -> Result<(), Error> {
-    match out {
-        Some(CompressedStream::Raw(deflate)) => return parse_deflate(deflate, &mut data),
-        Some(CompressedStream::Dht(dht)) => return parse_dht(dht, &mut data),
-        Some(CompressedStream::Zlib(zlib)) => return parse_zlib(zlib, &mut data),
-        _ => {}
-    };
+fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream) -> Result<(), Error> {
     let magic = data.peek_le::<u16>()?;
     if magic.v == 0x8b1f {
         data.drop(16)?;
@@ -633,19 +627,30 @@ fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
         data.pop_le(&mut gzip.os)?;
         gzip.deflate = Some(DeflateStream::default());
         match &mut gzip.deflate {
-            Some(deflate) => parse_deflate(deflate, &mut data)?,
+            Some(deflate) => parse_deflate(deflate, data)?,
             None => unreachable!()
         }
         data.align()?;
         data.pop_le(&mut gzip.checksum)?;
         data.pop_le(&mut gzip.len)?;
-        if data.pos == data.end {
-            Ok(())
-        } else {
-            Err(data.parse_error(&format!("Garbage (end={})", data.end)))
-        }
+        Ok(())
     } else {
         Err(data.parse_error("Stream type"))
+    }
+}
+
+fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
+                     -> Result<(), Error> {
+    match out {
+        Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data),
+        Some(CompressedStream::Dht(dht)) => parse_dht(dht, &mut data),
+        Some(CompressedStream::Zlib(zlib)) => parse_zlib(zlib, &mut data),
+        _ => parse_gzip(out, &mut data),
+    }?;
+    if data.pos == data.end {
+        Ok(())
+    } else {
+        Err(data.parse_error(&format!("Garbage (end={})", data.end)))
     }
 }
 
