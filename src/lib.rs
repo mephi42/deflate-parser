@@ -430,7 +430,7 @@ fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
                              plain_pos: &mut usize)
                              -> Result<(), Error> {
     // Compression with fixed Huffman codes (BTYPE=01)
-    let v5 = Value { v: 7, start: data.pos, end: data.pos };
+    let v5 = Value { v: 5, start: data.pos, end: data.pos };
     let v7 = Value { v: 7, start: data.pos, end: data.pos };
     let v8 = Value { v: 8, start: data.pos, end: data.pos };
     let v9 = Value { v: 9, start: data.pos, end: data.pos };
