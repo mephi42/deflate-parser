@@ -14,8 +14,9 @@ use num::PrimInt;
 use sha2::{Digest, Sha256};
 
 use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockFixed,
-           DeflateBlockHeader, DeflateBlockStored, DeflateStream, DynamicHuffmanTable, GzipStream,
-           HuffmanCode, HuffmanTree, Token, Value, ZlibStream};
+           DeflateBlockHeader, DeflateBlockStored, DeflateStream, DynamicHuffmanTable, EobToken,
+           GzipStream, HuffmanCode, HuffmanTree, LiteralToken, Token, Value, WindowToken,
+           ZlibStream};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -370,36 +371,55 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
     while !is_eob {
         let start = data.pos;
         let literal = parse_huffman_code(data, hlits_tree, start, 0, 0)?;
+        let token_plain_pos = *plain_pos;
         let v = match literal.v {
             0...255 => {
                 *plain_pos += 1;
-                Token::Literal(*plain_pos - 1, literal.v as u8)
+                let v = literal.v as u8;
+                Token::Literal(LiteralToken {
+                    plain_pos: token_plain_pos,
+                    v,
+                    c: v as char,
+                })
             }
             256 => {
                 is_eob = true;
-                Token::Eob(*plain_pos)
+                Token::Eob(EobToken {
+                    plain_pos: token_plain_pos,
+                })
             }
             257...285 => {
                 let literal_extras = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
                     3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
-                let literal_bases: [usize; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23,
+                let literal_bases: [u16; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23,
                     27, 31, 35, 43, 51, 59, 67, 83, 99, 115, 131, 163, 195, 227, 258];
                 let distance_extras = [0, 0, 0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6,
                     7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12, 13, 13];
+                let distance_bases = [1, 2, 3, 4, 5, 7, 9, 13, 17, 25, 33, 49, 65, 97, 129,
+                    193, 257, 385, 513, 769, 1025, 1537, 2049, 3073, 4097, 6145, 8193, 12289,
+                    16385, 24577];
                 let mut option_literal_extra: Option<Value<u8>> = None;
                 let literal_index = literal.v as usize - 257;
                 let literal_extra = data.pop_bits(
                     &mut option_literal_extra, literal_extras[literal_index])?;
-                let len = literal_bases[literal_index] + literal_extra.v as usize;
-                *plain_pos += len;
+                let length_value = literal_bases[literal_index] + u16::from(literal_extra.v);
+                *plain_pos += length_value as usize;
                 let distance_start = data.pos;
                 let distance = parse_huffman_code(
                     data, hdists_tree, distance_start, 0, 0)?;
                 let mut option_distance_extra: Option<Value<u16>> = None;
                 let distance_extra = data.pop_bits(
                     &mut option_distance_extra, distance_extras[distance.v as usize])?;
-                Token::Window(*plain_pos - len, literal.v, literal_extra.v,
-                              distance.v, distance_extra.v)
+                let distance_value = distance_bases[distance.v as usize] + distance_extra.v;
+                Token::Window(WindowToken {
+                    plain_pos: token_plain_pos,
+                    length: literal,
+                    length_extra: literal_extra.clone(),
+                    length_value,
+                    distance,
+                    distance_extra: distance_extra.clone(),
+                    distance_value,
+                })
             }
             _ => return Err(data.parse_error("Literal"))
         };

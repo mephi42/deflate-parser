@@ -108,9 +108,32 @@ pub enum HuffmanTree<T> {
 }
 
 #[derive(Clone, Serialize)]
+pub struct LiteralToken {
+    pub plain_pos: usize,
+    pub v: u8,
+    pub c: char,
+}
+
+#[derive(Clone, Serialize)]
+pub struct EobToken {
+    pub plain_pos: usize,
+}
+
+#[derive(Clone, Serialize)]
+pub struct WindowToken {
+    pub plain_pos: usize,
+    pub length: Value<u16>,
+    pub length_extra: Value<u8>,
+    pub length_value: u16,
+    pub distance: Value<u8>,
+    pub distance_extra: Value<u16>,
+    pub distance_value: u16,
+}
+
+#[derive(Clone, Serialize)]
 #[serde(untagged)]
 pub enum Token {
-    Literal(usize, u8),
-    Eob(usize),
-    Window(usize, u16, u8, u8, u16),
+    Literal(LiteralToken),
+    Eob(EobToken),
+    Window(WindowToken),
 }
