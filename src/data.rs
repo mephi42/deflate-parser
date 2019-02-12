@@ -36,6 +36,7 @@ pub struct DeflateStream {
 #[derive(Serialize)]
 pub struct DeflateBlock {
     pub header: DeflateBlockHeader,
+    pub end: Option<usize>,
     pub plain_start: Option<usize>,
     pub plain_end: Option<usize>,
     #[serde(flatten)]

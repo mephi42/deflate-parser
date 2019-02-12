@@ -556,6 +556,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
             Some(x) => x,
             None => unreachable!()
         },
+        end: None,
         plain_start: Some(*plain_pos),
         plain_end: None,
         ext: None,
@@ -608,6 +609,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
         }
         _ => return Err(data.parse_error(&format!("BTYPE={}", btype)))
     }
+    block.end = Some(data.pos);
     block.plain_end = Some(*plain_pos);
     Ok(!bfinal)
 }
