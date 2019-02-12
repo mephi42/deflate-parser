@@ -359,14 +359,12 @@ fn parse_deflate_block_header(out: &mut Option<DeflateBlockHeader>, data: &mut D
 }
 
 fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plain_pos: &mut usize,
-                hlits_tree: &HuffmanTree<u16>, hdists_tree: &HuffmanTree<u8>)
+                hlits_tree: &HuffmanTree<u16>, hdists_tree: &HuffmanTree<u8>, settings: &Settings)
                 -> Result<(), Error> {
     // 3.2.5. Compressed blocks (length and distance codes)
-    *out = Some(Vec::new());
-    let tokens = match out {
-        Some(x) => x,
-        None => unreachable!(),
-    };
+    if settings.data {
+        *out = Some(Vec::new());
+    }
     let mut is_eob = false;
     while !is_eob {
         let start = data.pos;
@@ -423,11 +421,14 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
             }
             _ => return Err(data.parse_error("Literal"))
         };
-        tokens.push(Value {
-            v,
-            start,
-            end: data.pos,
-        });
+        match out {
+            Some(x) => x.push(Value {
+                v,
+                start,
+                end: data.pos,
+            }),
+            None => {}
+        };
     }
     Ok(())
 }
@@ -447,7 +448,7 @@ fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStrea
 }
 
 fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
-                             plain_pos: &mut usize)
+                             plain_pos: &mut usize, settings: &Settings)
                              -> Result<(), Error> {
     // Compression with fixed Huffman codes (BTYPE=01)
     let v5 = Value { v: 5, start: data.pos, end: data.pos };
@@ -471,7 +472,7 @@ fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
     let mut option_hdists_tree: Option<HuffmanTree<u8>> = None;
     let hdists_tree = build_huffman_tree(
         &mut option_hdists_tree, &hdists_codes)?;
-    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree)?;
+    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree, settings)?;
     Ok(())
 }
 
@@ -521,7 +522,7 @@ fn parse_dht(out: &mut DynamicHuffmanTable, data: &mut DataStream)
 }
 
 fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStream,
-                               plain_pos: &mut usize)
+                               plain_pos: &mut usize, settings: &Settings)
                                -> Result<(), Error> {
     out.dht = Some(DynamicHuffmanTable::default());
     let dht = match &mut out.dht {
@@ -539,11 +540,12 @@ fn parse_deflate_block_dynamic(out: &mut DeflateBlockDynamic, data: &mut DataStr
     };
     // The actual compressed data of the block
     // The literal/length symbol
-    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree)?;
+    parse_tokens(&mut out.tokens, data, plain_pos, &hlits_tree, &hdists_tree, settings)?;
     Ok(())
 }
 
-fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain_pos: &mut usize)
+fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain_pos: &mut usize,
+                       settings: &Settings)
                        -> Result<bool, Error> {
     let mut option_header: Option<DeflateBlockHeader> = None;
     parse_deflate_block_header(&mut option_header, data)?;
@@ -583,7 +585,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
                 Some(DeflateBlock::Fixed(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_fixed(block, data, plain_pos)?;
+            parse_deflate_block_fixed(block, data, plain_pos, settings)?;
         }
         2 => {
             out.push(DeflateBlock::Dynamic(Box::new(DeflateBlockDynamic {
@@ -595,25 +597,26 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
                 Some(DeflateBlock::Dynamic(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_dynamic(block, data, plain_pos)?;
+            parse_deflate_block_dynamic(block, data, plain_pos, settings)?;
         }
         _ => return Err(data.parse_error(&format!("BTYPE={}", btype)))
     }
     Ok(!bfinal)
 }
 
-fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream) -> Result<(), Error> {
+fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream, settings: &Settings)
+                 -> Result<(), Error> {
     let mut plain_pos: usize = 0;
-    while parse_deflate_block(&mut deflate.blocks, data, &mut plain_pos)? {}
+    while parse_deflate_block(&mut deflate.blocks, data, &mut plain_pos, settings)? {}
     Ok(())
 }
 
-fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream) -> Result<(), Error> {
+fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream, settings: &Settings) -> Result<(), Error> {
     data.pop_le(&mut zlib.cmf)?;
     data.pop_le(&mut zlib.flg)?;
     zlib.deflate = Some(DeflateStream::default());
     match &mut zlib.deflate {
-        Some(deflate) => parse_deflate(deflate, data)?,
+        Some(deflate) => parse_deflate(deflate, data, settings)?,
         None => unreachable!()
     }
     data.align()?;
@@ -621,7 +624,8 @@ fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream) -> Result<(), Error>
     Ok(())
 }
 
-fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream) -> Result<(), Error> {
+fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream, settings: &Settings)
+              -> Result<(), Error> {
     let magic = data.peek_le::<u16>()?;
     if magic.v == 0x8b1f {
         data.drop(16)?;
@@ -647,7 +651,7 @@ fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream) -> Resu
         data.pop_le(&mut gzip.os)?;
         gzip.deflate = Some(DeflateStream::default());
         match &mut gzip.deflate {
-            Some(deflate) => parse_deflate(deflate, data)?,
+            Some(deflate) => parse_deflate(deflate, data, settings)?,
             None => unreachable!()
         }
         data.align()?;
@@ -659,13 +663,17 @@ fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream) -> Resu
     }
 }
 
-fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
+fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream, settings: &Settings)
                      -> Result<(), Error> {
     match out {
-        Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data),
-        Some(CompressedStream::Dht(dht)) => parse_dht(dht, &mut data),
-        Some(CompressedStream::Zlib(zlib)) => parse_zlib(zlib, &mut data),
-        _ => parse_gzip(out, &mut data),
+        Some(CompressedStream::Raw(deflate)) =>
+            parse_deflate(deflate, &mut data, settings),
+        Some(CompressedStream::Dht(dht)) =>
+            parse_dht(dht, &mut data),
+        Some(CompressedStream::Zlib(zlib)) =>
+            parse_zlib(zlib, &mut data, settings),
+        _ =>
+            parse_gzip(out, &mut data, settings),
     }?;
     if data.pos == data.end {
         Ok(())
@@ -674,12 +682,19 @@ fn parse_data_stream(out: &mut Option<CompressedStream>, mut data: DataStream)
     }
 }
 
-pub fn parse(out: &mut Option<CompressedStream>, path: &Path, bit_offset: usize)
-             -> Result<(), Error> {
-    parse_data_stream(out, DataStream::new(path, bit_offset)?)
+pub struct Settings {
+    pub bit_offset: usize,
+    pub data: bool,
 }
 
-pub fn parse_file(out: &mut Option<CompressedStream>, file: File, bit_offset: usize)
+pub fn parse(out: &mut Option<CompressedStream>, path: &Path, settings: &Settings)
+             -> Result<(), Error> {
+    let data = DataStream::new(path, settings.bit_offset)?;
+    parse_data_stream(out, data, settings)
+}
+
+pub fn parse_file(out: &mut Option<CompressedStream>, file: File, settings: &Settings)
                   -> Result<(), Error> {
-    parse_data_stream(out, DataStream::new_from_file(file, bit_offset)?)
+    let data = DataStream::new_from_file(file, settings.bit_offset)?;
+    parse_data_stream(out, data, settings)
 }

@@ -6,8 +6,8 @@ use std::path::Path;
 
 use clap::{App, Arg};
 
+use deflate_parser::{parse, Settings};
 use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable, ZlibStream};
-use deflate_parser::parse;
 
 fn main() {
     let matches = App::new(env!("CARGO_PKG_NAME"))
@@ -28,19 +28,24 @@ fn main() {
         .arg(Arg::with_name("zlib")
             .long("zlib")
             .conflicts_with_all(&["raw", "dht"]))
+        .arg(Arg::with_name("data")
+            .long("data"))
         .arg(Arg::with_name("FILE")
             .required(true)
             .index(1))
         .get_matches();
-    let bit_offset = match matches.value_of("bit-offset") {
-        Some(bit_offset_str) => match bit_offset_str.parse::<usize>() {
-            Ok(x) => x,
-            Err(err) => {
-                eprintln!("{}", err);
-                ::std::process::exit(1);
+    let settings = Settings {
+        bit_offset: match matches.value_of("bit-offset") {
+            Some(bit_offset_str) => match bit_offset_str.parse::<usize>() {
+                Ok(x) => x,
+                Err(err) => {
+                    eprintln!("{}", err);
+                    ::std::process::exit(1);
+                }
             }
-        }
-        None => 0
+            None => 0
+        },
+        data: matches.is_present("data"),
     };
     let mut output: Box<std::io::Write> = match matches.value_of("output") {
         Some(output_path) => match std::fs::File::create(output_path) {
@@ -65,7 +70,7 @@ fn main() {
     } else {
         None
     };
-    let result = parse(&mut stream, Path::new(file), bit_offset);
+    let result = parse(&mut stream, Path::new(file), &settings);
     let out_json = serde_json::to_string_pretty(&stream).expect("to_string_pretty");
     match write!(output, "{}", out_json) {
         Ok(_) => {}

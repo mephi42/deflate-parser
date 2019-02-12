@@ -7,8 +7,8 @@ mod test {
 
     use tempfile::tempfile;
 
-    use deflate_parser::data::{CompressedStream, GzipStream};
-    use deflate_parser::parse_file;
+    use deflate_parser::{parse_file, Settings};
+    use deflate_parser::data::CompressedStream;
     use deflate_parser::error::Error;
 
     #[test]
@@ -21,7 +21,10 @@ mod test {
         let mut gz_file = tempfile()?;
         gz_file.write(&gz_data)?;
         let mut result: Option<CompressedStream> = None;
-        parse_file(&mut result, gz_file, 0)?;
+        parse_file(&mut result, gz_file, &Settings {
+            bit_offset: 0,
+            data: true,
+        })?;
         let stream = result.expect("CompressedStream is None");
         let gzip = match stream {
             CompressedStream::Gzip(x) => x,
