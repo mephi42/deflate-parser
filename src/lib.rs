@@ -121,17 +121,20 @@ impl DataStream {
         self.drop(n)
     }
 
-    fn pop_bytes(&mut self, out: &mut Option<Value<String>>, n: usize) -> Result<(), Error> {
+    fn pop_bytes(&mut self, out: &mut Option<Value<String>>, n: usize, settings: &Settings)
+                 -> Result<(), Error> {
         let index = self.byte_index()?;
         let bits = n * 8;
         self.require(bits)?;
-        let mut h = Sha256::new();
-        h.input(&self.bytes[index..index + n]);
-        *out = Some(Value {
-            v: format!("sha256:{:x}", h.result()),
-            start: self.pos,
-            end: self.pos + bits,
-        });
+        if settings.data {
+            let mut h = Sha256::new();
+            h.input(&self.bytes[index..index + n]);
+            *out = Some(Value {
+                v: format!("sha256:{:x}", h.result()),
+                start: self.pos,
+                end: self.pos + bits,
+            });
+        }
         self.pos += bits;
         Ok(())
     }
@@ -434,14 +437,14 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
 }
 
 fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStream,
-                              plain_pos: &mut usize)
+                              plain_pos: &mut usize, settings: &Settings)
                               -> Result<(), Error> {
     // 3.2.4. Non-compressed blocks (BTYPE=00)
     data.align()?;
     let len = data.pop_le(&mut out.len)?;
     let len_usize = len.v as usize;
     data.pop_le(&mut out.nlen)?;
-    data.pop_bytes(&mut out.data, len_usize)?;
+    data.pop_bytes(&mut out.data, len_usize, settings)?;
     out.plain_pos = Some(*plain_pos);
     *plain_pos += len_usize;
     Ok(())
@@ -574,7 +577,7 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
                 Some(DeflateBlock::Stored(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_stored(block, data, plain_pos)?;
+            parse_deflate_block_stored(block, data, plain_pos, settings)?;
         }
         1 => {
             out.push(DeflateBlock::Fixed(DeflateBlockFixed {
