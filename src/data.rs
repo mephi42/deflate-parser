@@ -34,8 +34,17 @@ pub struct DeflateStream {
 }
 
 #[derive(Serialize)]
+pub struct DeflateBlock {
+    pub header: DeflateBlockHeader,
+    pub plain_start: Option<usize>,
+    pub plain_end: Option<usize>,
+    #[serde(flatten)]
+    pub ext: Option<DeflateBlockExt>,
+}
+
+#[derive(Serialize)]
 #[serde(untagged)]
-pub enum DeflateBlock {
+pub enum DeflateBlockExt {
     Stored(DeflateBlockStored),
     Fixed(DeflateBlockFixed),
     Dynamic(Box<DeflateBlockDynamic>),
@@ -43,16 +52,13 @@ pub enum DeflateBlock {
 
 #[derive(Serialize)]
 pub struct DeflateBlockStored {
-    pub header: DeflateBlockHeader,
     pub len: Option<Value<u16>>,
     pub nlen: Option<Value<u16>>,
     pub data: Option<Value<String>>,
-    pub plain_pos: Option<usize>,
 }
 
 #[derive(Serialize)]
 pub struct DeflateBlockFixed {
-    pub header: DeflateBlockHeader,
     pub tokens: Option<Vec<Value<Token>>>,
 }
 
@@ -74,7 +80,6 @@ pub struct DynamicHuffmanTable {
 
 #[derive(Serialize)]
 pub struct DeflateBlockDynamic {
-    pub header: DeflateBlockHeader,
     pub dht: Option<DynamicHuffmanTable>,
     pub tokens: Option<Vec<Value<Token>>>,
 }

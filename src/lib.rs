@@ -13,10 +13,10 @@ use std::path::Path;
 use num::PrimInt;
 use sha2::{Digest, Sha256};
 
-use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockFixed,
-           DeflateBlockHeader, DeflateBlockStored, DeflateStream, DynamicHuffmanTable, EobToken,
-           GzipStream, HuffmanCode, HuffmanTree, LiteralToken, Token, Value, WindowToken,
-           ZlibStream};
+use data::{CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockExt,
+           DeflateBlockFixed, DeflateBlockHeader, DeflateBlockStored, DeflateStream,
+           DynamicHuffmanTable, EobToken, GzipStream, HuffmanCode, HuffmanTree, LiteralToken, Token,
+           Value, WindowToken, ZlibStream};
 use error::{Error, ParseError};
 
 pub mod error;
@@ -445,7 +445,6 @@ fn parse_deflate_block_stored(out: &mut DeflateBlockStored, data: &mut DataStrea
     let len_usize = len.v as usize;
     data.pop_le(&mut out.nlen)?;
     data.pop_bytes(&mut out.data, len_usize, settings)?;
-    out.plain_pos = Some(*plain_pos);
     *plain_pos += len_usize;
     Ok(())
 }
@@ -552,58 +551,64 @@ fn parse_deflate_block(out: &mut Vec<DeflateBlock>, data: &mut DataStream, plain
                        -> Result<bool, Error> {
     let mut option_header: Option<DeflateBlockHeader> = None;
     parse_deflate_block_header(&mut option_header, data)?;
-    let header = match option_header {
+    out.push(DeflateBlock {
+        header: match option_header {
+            Some(x) => x,
+            None => unreachable!()
+        },
+        plain_start: Some(*plain_pos),
+        plain_end: None,
+        ext: None,
+    });
+    let block = match out.last_mut() {
         Some(x) => x,
         None => unreachable!()
     };
-    let bfinal = match &header.bfinal {
+    let bfinal = match &block.header.bfinal {
         Some(x) => x.v == 1,
         _ => unreachable!()
     };
-    let btype = match &header.btype {
+    let btype = match &block.header.btype {
         Some(btype) => btype.v,
         None => unreachable!()
     };
     match btype {
         0 => {
-            out.push(DeflateBlock::Stored(DeflateBlockStored {
-                header,
+            block.ext = Some(DeflateBlockExt::Stored(DeflateBlockStored {
                 len: None,
                 nlen: None,
                 data: None,
-                plain_pos: None,
             }));
-            let block = match out.last_mut() {
-                Some(DeflateBlock::Stored(ref mut x)) => x,
+            let ext = match block.ext {
+                Some(DeflateBlockExt::Stored(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_stored(block, data, plain_pos, settings)?;
+            parse_deflate_block_stored(ext, data, plain_pos, settings)?;
         }
         1 => {
-            out.push(DeflateBlock::Fixed(DeflateBlockFixed {
-                header,
+            block.ext = Some(DeflateBlockExt::Fixed(DeflateBlockFixed {
                 tokens: None,
             }));
-            let block = match out.last_mut() {
-                Some(DeflateBlock::Fixed(ref mut x)) => x,
+            let ext = match block.ext {
+                Some(DeflateBlockExt::Fixed(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_fixed(block, data, plain_pos, settings)?;
+            parse_deflate_block_fixed(ext, data, plain_pos, settings)?;
         }
         2 => {
-            out.push(DeflateBlock::Dynamic(Box::new(DeflateBlockDynamic {
-                header,
+            block.ext = Some(DeflateBlockExt::Dynamic(Box::new(DeflateBlockDynamic {
                 dht: None,
                 tokens: None,
             })));
-            let block = match out.last_mut() {
-                Some(DeflateBlock::Dynamic(ref mut x)) => x,
+            let ext = match block.ext {
+                Some(DeflateBlockExt::Dynamic(ref mut x)) => x,
                 _ => unreachable!()
             };
-            parse_deflate_block_dynamic(block, data, plain_pos, settings)?;
+            parse_deflate_block_dynamic(ext, data, plain_pos, settings)?;
         }
         _ => return Err(data.parse_error(&format!("BTYPE={}", btype)))
     }
+    block.plain_end = Some(*plain_pos);
     Ok(!bfinal)
 }
 
