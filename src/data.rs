@@ -24,6 +24,7 @@ pub struct GzipStream {
 pub struct ZlibStream {
     pub cmf: Option<Value<u8>>,
     pub flg: Option<Value<u8>>,
+    pub dictid: Option<Value<u32>>,
     pub deflate: Option<DeflateStream>,
     pub adler32: Option<Value<u32>>,
 }

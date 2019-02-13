@@ -623,7 +623,10 @@ fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream, settings: &
 
 fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream, settings: &Settings) -> Result<(), Error> {
     data.pop_le(&mut zlib.cmf)?;
-    data.pop_le(&mut zlib.flg)?;
+    let flg = data.pop_le(&mut zlib.flg)?;
+    if flg.v & 0x20 != 0 {
+        data.pop_le(&mut zlib.dictid)?;
+    }
     zlib.deflate = Some(DeflateStream::default());
     match &mut zlib.deflate {
         Some(deflate) => parse_deflate(deflate, data, settings)?,
