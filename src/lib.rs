@@ -618,6 +618,7 @@ fn parse_deflate(deflate: &mut DeflateStream, data: &mut DataStream, settings: &
                  -> Result<(), Error> {
     let mut plain_pos: usize = 0;
     while parse_deflate_block(&mut deflate.blocks, data, &mut plain_pos, settings)? {}
+    data.align()?;
     Ok(())
 }
 
@@ -632,7 +633,6 @@ fn parse_zlib(zlib: &mut ZlibStream, data: &mut DataStream, settings: &Settings)
         Some(deflate) => parse_deflate(deflate, data, settings)?,
         None => unreachable!()
     }
-    data.align()?;
     data.pop_le(&mut zlib.adler32)?;
     Ok(())
 }
@@ -667,7 +667,6 @@ fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream, setting
             Some(deflate) => parse_deflate(deflate, data, settings)?,
             None => unreachable!()
         }
-        data.align()?;
         data.pop_le(&mut gzip.checksum)?;
         data.pop_le(&mut gzip.len)?;
         Ok(())
