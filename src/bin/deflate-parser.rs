@@ -14,28 +14,28 @@ fn main() {
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(Arg::with_name("output")
+        .arg(Arg::with_name("OUTPUT")
             .long("output")
             .takes_value(true))
-        .arg(Arg::with_name("bit-offset")
+        .arg(Arg::with_name("BIT_OFFSET")
             .long("bit-offset")
             .takes_value(true))
-        .arg(Arg::with_name("raw")
+        .arg(Arg::with_name("RAW")
             .long("raw"))
-        .arg(Arg::with_name("dht")
-            .long("dht")
-            .conflicts_with("raw"))
-        .arg(Arg::with_name("zlib")
+        .arg(Arg::with_name("RAW_DHT")
+            .long("raw-dht")
+            .conflicts_with("RAW"))
+        .arg(Arg::with_name("ZLIB")
             .long("zlib")
-            .conflicts_with_all(&["raw", "dht"]))
-        .arg(Arg::with_name("data")
+            .conflicts_with_all(&["RAW", "RAW_DHT"]))
+        .arg(Arg::with_name("DATA")
             .long("data"))
         .arg(Arg::with_name("FILE")
             .required(true)
             .index(1))
         .get_matches();
     let settings = Settings {
-        bit_offset: match matches.value_of("bit-offset") {
+        bit_offset: match matches.value_of("BIT_OFFSET") {
             Some(bit_offset_str) => match bit_offset_str.parse::<usize>() {
                 Ok(x) => x,
                 Err(err) => {
@@ -45,9 +45,9 @@ fn main() {
             }
             None => 0
         },
-        data: matches.is_present("data"),
+        data: matches.is_present("DATA"),
     };
-    let mut output: Box<std::io::Write> = match matches.value_of("output") {
+    let mut output: Box<std::io::Write> = match matches.value_of("OUTPUT") {
         Some(output_path) => match std::fs::File::create(output_path) {
             Ok(x) => Box::new(x),
             Err(err) => {
@@ -57,13 +57,13 @@ fn main() {
         },
         None => Box::new(std::io::stdout())
     };
-    let raw = matches.is_present("raw");
-    let dht = matches.is_present("dht");
-    let zlib = matches.is_present("zlib");
+    let raw = matches.is_present("RAW");
+    let raw_dht = matches.is_present("RAW_DHT");
+    let zlib = matches.is_present("ZLIB");
     let file = matches.value_of("FILE").unwrap();
     let mut stream: Option<CompressedStream> = if raw {
         Some(CompressedStream::Raw(DeflateStream::default()))
-    } else if dht {
+    } else if raw_dht {
         Some(CompressedStream::Dht(Box::new(DynamicHuffmanTable::default())))
     } else if zlib {
         Some(CompressedStream::Zlib(ZlibStream::default()))
