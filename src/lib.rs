@@ -409,6 +409,9 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
                 let distance = parse_huffman_code(
                     data, hdists_tree, distance_start, 0, 0)?;
                 let mut option_distance_extra: Option<Value<u16>> = None;
+                if distance.v as usize >= distance_extras.len() {
+                    return Err(data.parse_error("Distance extra bits"))
+                }
                 let distance_extra = data.pop_bits(
                     &mut option_distance_extra, distance_extras[distance.v as usize])?;
                 let distance_value = distance_bases[distance.v as usize] + distance_extra.v;
