@@ -15,6 +15,7 @@ pub struct GzipStream {
     pub time: Option<Value<u32>>,
     pub xflags: Option<Value<u8>>,
     pub os: Option<Value<u8>>,
+    pub name: Option<Value<String>>,
     pub deflate: Option<DeflateStream>,
     pub checksum: Option<Value<u32>>,
     pub len: Option<Value<u32>>,

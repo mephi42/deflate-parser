@@ -138,6 +138,25 @@ impl DataStream {
         self.pos += bits;
         Ok(())
     }
+
+    fn pop_str(&mut self, out: &mut Option<Value<String>>) -> Result<(), Error> {
+        let start = self.byte_index()?;
+        let mut pos = start;
+        loop {
+            self.require(8)?;
+            let byte = self.bytes[pos];
+            pos += 1;
+            self.pos += 8;
+            if byte == 0 {
+                *out = Some(Value {
+                    v: std::str::from_utf8(&self.bytes[start..pos - 1])?.to_owned(),
+                    start: start * 8,
+                    end: pos * 8,
+                });
+                break Ok(());
+            }
+        }
+    }
 }
 
 struct DataStream {
@@ -410,7 +429,7 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
                     data, hdists_tree, distance_start, 0, 0)?;
                 let mut option_distance_extra: Option<Value<u16>> = None;
                 if distance.v as usize >= distance_extras.len() {
-                    return Err(data.parse_error("Distance extra bits"))
+                    return Err(data.parse_error("Distance extra bits"));
                 }
                 let distance_extra = data.pop_bits(
                     &mut option_distance_extra, distance_extras[distance.v as usize])?;
@@ -652,6 +671,7 @@ fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream, setting
             time: None,
             xflags: None,
             os: None,
+            name: None,
             deflate: None,
             checksum: None,
             len: None,
@@ -661,10 +681,13 @@ fn parse_gzip(out: &mut Option<CompressedStream>, data: &mut DataStream, setting
             _ => unreachable!()
         };
         data.pop_le(&mut gzip.method)?;
-        data.pop_le(&mut gzip.flags)?;
+        let flags = data.pop_le(&mut gzip.flags)?.v;
         data.pop_le(&mut gzip.time)?;
         data.pop_le(&mut gzip.xflags)?;
         data.pop_le(&mut gzip.os)?;
+        if flags & 8 != 0 {
+            data.pop_str(&mut gzip.name)?;
+        }
         gzip.deflate = Some(DeflateStream::default());
         match &mut gzip.deflate {
             Some(deflate) => parse_deflate(deflate, data, settings)?,
