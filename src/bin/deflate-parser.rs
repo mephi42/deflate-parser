@@ -8,6 +8,7 @@ use clap::{App, Arg};
 
 use deflate_parser::{parse, Settings};
 use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable, ZlibStream};
+use std::io::BufWriter;
 
 fn main() {
     let matches = App::new(env!("CARGO_PKG_NAME"))
@@ -47,7 +48,7 @@ fn main() {
         },
         data: matches.is_present("DATA"),
     };
-    let mut output: Box<std::io::Write> = match matches.value_of("OUTPUT") {
+    let output: Box<std::io::Write> = match matches.value_of("OUTPUT") {
         Some(output_path) => match std::fs::File::create(output_path) {
             Ok(x) => Box::new(x),
             Err(err) => {
@@ -71,14 +72,13 @@ fn main() {
         None
     };
     let result = parse(&mut stream, Path::new(file), &settings);
-    let out_json = serde_json::to_string_pretty(&stream).expect("to_string_pretty");
-    match write!(output, "{}", out_json) {
+    match serde_json::to_writer_pretty(BufWriter::new(output), &stream) {
         Ok(_) => {}
         Err(err) => {
             eprintln!("{}", err);
             ::std::process::exit(1);
         }
-    };
+    }
     match result {
         Ok(()) => {}
         Err(err) => {
