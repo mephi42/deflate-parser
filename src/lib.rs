@@ -329,11 +329,11 @@ fn parse_huffman_code_lengths<'a>(out: &'a mut Option<Vec<Value<u8>>>, data: &mu
         let start = data.pos;
         let value = parse_huffman_code(data, tree, start, 0, 0)?;
         match value.v {
-            0...15 => {
+            0..=15 => {
                 // 0 - 15: Represent code lengths of 0 - 15
                 lens.push(value)
             }
-            16...18 => {
+            16..=18 => {
                 let (what, start, repeat_add, repeat_len) = match value.v {
                     // 16: Copy the previous code length 3 - 6 times
                     16 => {
@@ -393,7 +393,7 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
         let literal = parse_huffman_code(data, hlits_tree, start, 0, 0)?;
         let token_plain_pos = *plain_pos;
         let v = match literal.v {
-            0...255 => {
+            0..=255 => {
                 *plain_pos += 1;
                 let v = literal.v as u8;
                 Token::Literal(LiteralToken {
@@ -408,7 +408,7 @@ fn parse_tokens(out: &mut Option<Vec<Value<Token>>>, data: &mut DataStream, plai
                     plain_pos: token_plain_pos,
                 })
             }
-            257...285 => {
+            257..=285 => {
                 let literal_extras = [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2,
                     3, 3, 3, 3, 4, 4, 4, 4, 5, 5, 5, 5, 0];
                 let literal_bases: [u16; 29] = [3, 4, 5, 6, 7, 8, 9, 10, 11, 13, 15, 17, 19, 23,

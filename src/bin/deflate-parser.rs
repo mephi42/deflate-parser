@@ -48,7 +48,7 @@ fn main() {
         },
         data: matches.is_present("DATA"),
     };
-    let output: Box<std::io::Write> = match matches.value_of("OUTPUT") {
+    let output: Box<dyn std::io::Write> = match matches.value_of("OUTPUT") {
         Some(output_path) => match std::fs::File::create(output_path) {
             Ok(x) => Box::new(x),
             Err(err) => {
