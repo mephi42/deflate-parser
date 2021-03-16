@@ -128,9 +128,9 @@ impl DataStream {
         self.require(bits)?;
         if settings.data {
             let mut h = Sha256::new();
-            h.input(&self.bytes[index..index + n]);
+            h.update(&self.bytes[index..index + n]);
             *out = Some(Value {
-                v: format!("sha256:{:x}", h.result()),
+                v: format!("sha256:{:x}", h.finalize()),
                 start: self.pos,
                 end: self.pos + bits,
             });
