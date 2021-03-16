@@ -183,10 +183,7 @@ fn parse_hclens<'a>(out: &'a mut Option<Vec<Value<u8>>>, data: &mut DataStream, 
 
 impl<T> HuffmanTree<T> {
     fn is_empty_leaf(&self) -> bool {
-        match self {
-            HuffmanTree::Leaf(None) => true,
-            _ => false,
-        }
+        matches!(self, HuffmanTree::Leaf(None))
     }
 
     fn new_node() -> HuffmanTree<T> {
@@ -480,16 +477,16 @@ fn parse_deflate_block_fixed(out: &mut DeflateBlockFixed, data: &mut DataStream,
     let v8 = Value { v: 8, start: data.pos, end: data.pos };
     let v9 = Value { v: 9, start: data.pos, end: data.pos };
     let hlits = std::iter::repeat(v8.clone()).take((0u16..=143).len())
-        .chain(std::iter::repeat(v9.clone()).take((144u16..=255).len()))
-        .chain(std::iter::repeat(v7.clone()).take((256u16..=279).len()))
-        .chain(std::iter::repeat(v8.clone()).take((280u16..=287).len()))
+        .chain(std::iter::repeat(v9).take((144u16..=255).len()))
+        .chain(std::iter::repeat(v7).take((256u16..=279).len()))
+        .chain(std::iter::repeat(v8).take((280u16..=287).len()))
         .collect::<Vec<Value<u8>>>();
     let hlits_codes = build_huffman_codes(
         &(0..=285).collect::<Vec<u16>>(), &hlits);
     let mut option_hlits_tree: Option<HuffmanTree<u16>> = None;
     let hlits_tree = build_huffman_tree(
         &mut option_hlits_tree, &hlits_codes)?;
-    let hdists = std::iter::repeat(v5.clone()).take((0u8..=31).len())
+    let hdists = std::iter::repeat(v5).take((0u8..=31).len())
         .collect::<Vec<Value<u8>>>();
     let hdists_codes = build_huffman_codes(
         &(0..=31).collect::<Vec<u8>>(), &hdists);
