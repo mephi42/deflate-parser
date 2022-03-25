@@ -1,0 +1,6 @@
+#!/bin/sh
+set -e -u -x
+cd "$(dirname "$0")"
+cargo fmt
+cargo clippy
+cargo test

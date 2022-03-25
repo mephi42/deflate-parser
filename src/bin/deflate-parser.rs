@@ -4,36 +4,28 @@ extern crate serde_json;
 
 use std::path::Path;
 
-use clap::{App, Arg};
+use clap::{Arg, Command};
 
-use deflate_parser::{parse, Settings};
 use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable, ZlibStream};
+use deflate_parser::{parse, Settings};
 use std::io::BufWriter;
 
 fn main() {
-    let matches = App::new(env!("CARGO_PKG_NAME"))
+    let matches = Command::new(env!("CARGO_PKG_NAME"))
         .version(env!("CARGO_PKG_VERSION"))
         .author(env!("CARGO_PKG_AUTHORS"))
         .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(Arg::with_name("OUTPUT")
-            .long("output")
-            .takes_value(true))
-        .arg(Arg::with_name("BIT_OFFSET")
-            .long("bit-offset")
-            .takes_value(true))
-        .arg(Arg::with_name("RAW")
-            .long("raw"))
-        .arg(Arg::with_name("RAW_DHT")
-            .long("raw-dht")
-            .conflicts_with("RAW"))
-        .arg(Arg::with_name("ZLIB")
-            .long("zlib")
-            .conflicts_with_all(&["RAW", "RAW_DHT"]))
-        .arg(Arg::with_name("DATA")
-            .long("data"))
-        .arg(Arg::with_name("FILE")
-            .required(true)
-            .index(1))
+        .arg(Arg::new("OUTPUT").long("output").takes_value(true))
+        .arg(Arg::new("BIT_OFFSET").long("bit-offset").takes_value(true))
+        .arg(Arg::new("RAW").long("raw"))
+        .arg(Arg::new("RAW_DHT").long("raw-dht").conflicts_with("RAW"))
+        .arg(
+            Arg::new("ZLIB")
+                .long("zlib")
+                .conflicts_with_all(&["RAW", "RAW_DHT"]),
+        )
+        .arg(Arg::new("DATA").long("data"))
+        .arg(Arg::new("FILE").required(true).index(1))
         .get_matches();
     let settings = Settings {
         bit_offset: match matches.value_of("BIT_OFFSET") {
@@ -43,8 +35,8 @@ fn main() {
                     eprintln!("{}", err);
                     ::std::process::exit(1);
                 }
-            }
-            None => 0
+            },
+            None => 0,
         },
         data: matches.is_present("DATA"),
     };
@@ -56,7 +48,7 @@ fn main() {
                 ::std::process::exit(1);
             }
         },
-        None => Box::new(std::io::stdout())
+        None => Box::new(std::io::stdout()),
     };
     let raw = matches.is_present("RAW");
     let raw_dht = matches.is_present("RAW_DHT");
@@ -65,7 +57,9 @@ fn main() {
     let mut stream: Option<CompressedStream> = if raw {
         Some(CompressedStream::Raw(DeflateStream::default()))
     } else if raw_dht {
-        Some(CompressedStream::Dht(Box::new(DynamicHuffmanTable::default())))
+        Some(CompressedStream::Dht(Box::new(
+            DynamicHuffmanTable::default(),
+        )))
     } else if zlib {
         Some(CompressedStream::Zlib(ZlibStream::default()))
     } else {

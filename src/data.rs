@@ -97,7 +97,7 @@ pub struct DeflateBlockHeader {
 pub struct Value<T: Clone> {
     pub v: T,
     pub start: usize,
-    pub end: usize,  // non-inclusive
+    pub end: usize, // non-inclusive
 }
 
 #[derive(Serialize)]
