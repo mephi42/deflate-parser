@@ -1,0 +1,133 @@
+{
+  "magic": {
+    "v": 35615,
+    "start": 0,
+    "end": 8
+  },
+  "method": {
+    "v": 8,
+    "start": 16,
+    "end": 24
+  },
+  "flags": {
+    "v": 0,
+    "start": 24,
+    "end": 32
+  },
+  "time": {
+    "v": 1547214801,
+    "start": 32,
+    "end": 40
+  },
+  "xflags": {
+    "v": 2,
+    "start": 64,
+    "end": 72
+  },
+  "os": {
+    "v": 3,
+    "start": 72,
+    "end": 80
+  },
+  "name": null,
+  "deflate": {
+    "blocks": [
+      {
+        "header": {
+          "bfinal": {
+            "v": 1,
+            "start": 80,
+            "end": 81
+          },
+          "btype": {
+            "v": 1,
+            "start": 81,
+            "end": 83
+          }
+        },
+        "end": 138,
+        "plain_start": 0,
+        "plain_end": 6,
+        "tokens": [
+          {
+            "v": {
+              "plain_pos": 0,
+              "v": 104,
+              "c": "h",
+              "hex": "68"
+            },
+            "start": 83,
+            "end": 91
+          },
+          {
+            "v": {
+              "plain_pos": 1,
+              "v": 101,
+              "c": "e",
+              "hex": "65"
+            },
+            "start": 91,
+            "end": 99
+          },
+          {
+            "v": {
+              "plain_pos": 2,
+              "v": 108,
+              "c": "l",
+              "hex": "6c"
+            },
+            "start": 99,
+            "end": 107
+          },
+          {
+            "v": {
+              "plain_pos": 3,
+              "v": 108,
+              "c": "l",
+              "hex": "6c"
+            },
+            "start": 107,
+            "end": 115
+          },
+          {
+            "v": {
+              "plain_pos": 4,
+              "v": 111,
+              "c": "o",
+              "hex": "6f"
+            },
+            "start": 115,
+            "end": 123
+          },
+          {
+            "v": {
+              "plain_pos": 5,
+              "v": 10,
+              "c": "\n",
+              "hex": "0a"
+            },
+            "start": 123,
+            "end": 131
+          },
+          {
+            "v": {
+              "plain_pos": 6
+            },
+            "start": 131,
+            "end": 138
+          }
+        ]
+      }
+    ]
+  },
+  "checksum": {
+    "v": 909783072,
+    "start": 144,
+    "end": 152
+  },
+  "len": {
+    "v": 6,
+    "start": 176,
+    "end": 184
+  }
+}

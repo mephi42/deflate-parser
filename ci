@@ -2,5 +2,8 @@
 set -e -u -x
 cd "$(dirname "$0")"
 cargo fmt
-cargo clippy
+# https://github.com/rust-lang/rust-clippy#travis-ci
+cargo clippy --all-targets --all-features -- -D warnings
+cargo build
 cargo test
+cargo build --release

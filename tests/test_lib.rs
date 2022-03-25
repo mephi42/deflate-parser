@@ -1,39 +1,51 @@
 extern crate deflate_parser;
-extern crate tempfile;
 
 #[cfg(test)]
 mod test {
-    use std::io::Write;
-
-    use tempfile::tempfile;
+    use std::fs::File;
+    use std::io::Read;
+    use std::path::PathBuf;
+    use std::str;
 
     use deflate_parser::data::CompressedStream;
     use deflate_parser::error::Error;
-    use deflate_parser::{parse_file, Settings};
+    use deflate_parser::{parse, Settings};
 
-    #[test]
-    fn hello() -> Result<(), Error> {
-        let gz_data = [
-            0x1f, 0x8b, 0x08, 0x00, 0xd1, 0x9f, 0x38, 0x5c, 0x02, 0x03, 0xcb, 0x48, 0xcd, 0xc9,
-            0xc9, 0xe7, 0x02, 0x00, 0x20, 0x30, 0x3a, 0x36, 0x06, 0x00, 0x00, 0x00,
-        ];
-        let mut gz_file = tempfile()?;
-        gz_file.write(&gz_data)?;
+    fn path(name: &str) -> PathBuf {
+        let mut result = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        result.push("tests");
+        result.push(name);
+        result
+    }
+
+    fn test_gz(name: &str) -> Result<(), Error> {
         let mut result: Option<CompressedStream> = None;
-        parse_file(
+        parse(
             &mut result,
-            gz_file,
+            &path(&(name.to_owned() + ".gz")),
             &Settings {
                 bit_offset: 0,
                 data: true,
             },
         )?;
-        let stream = result.expect("CompressedStream is None");
-        let gzip = match stream {
-            CompressedStream::Gzip(x) => x,
-            _ => panic!("CompressedStream is not a Gzip"),
-        };
-        let _deflate = gzip.deflate.expect("DeflateStream is None");
+        let mut expected = Vec::new();
+        File::open(&path(&(name.to_owned() + ".json")))?.read_to_end(&mut expected)?;
+        let mut actual = Vec::new();
+        serde_json::to_writer_pretty(&mut actual, &result).expect("to_writer_pretty");
+        assert_eq!(
+            str::from_utf8(&expected).expect("from_utf8)"),
+            str::from_utf8(&actual).expect("from_utf8")
+        );
         Ok(())
+    }
+
+    #[test]
+    fn hello() -> Result<(), Error> {
+        test_gz("hello")
+    }
+
+    #[test]
+    fn aaa() -> Result<(), Error> {
+        test_gz("aaa")
     }
 }

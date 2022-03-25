@@ -1,0 +1,127 @@
+{
+  "magic": {
+    "v": 35615,
+    "start": 0,
+    "end": 8
+  },
+  "method": {
+    "v": 8,
+    "start": 16,
+    "end": 24
+  },
+  "flags": {
+    "v": 8,
+    "start": 24,
+    "end": 32
+  },
+  "time": {
+    "v": 1648235325,
+    "start": 32,
+    "end": 40
+  },
+  "xflags": {
+    "v": 2,
+    "start": 64,
+    "end": 72
+  },
+  "os": {
+    "v": 3,
+    "start": 72,
+    "end": 80
+  },
+  "name": {
+    "v": "aaa",
+    "start": 80,
+    "end": 112
+  },
+  "deflate": {
+    "blocks": [
+      {
+        "header": {
+          "bfinal": {
+            "v": 1,
+            "start": 112,
+            "end": 113
+          },
+          "btype": {
+            "v": 1,
+            "start": 113,
+            "end": 115
+          }
+        },
+        "end": 151,
+        "plain_start": 0,
+        "plain_end": 20,
+        "tokens": [
+          {
+            "v": {
+              "plain_pos": 0,
+              "v": 65,
+              "c": "A",
+              "hex": "41"
+            },
+            "start": 115,
+            "end": 123
+          },
+          {
+            "v": {
+              "plain_pos": 1,
+              "v": 65,
+              "c": "A",
+              "hex": "41"
+            },
+            "start": 123,
+            "end": 131
+          },
+          {
+            "v": {
+              "plain_pos": 2,
+              "length": {
+                "v": 268,
+                "start": 131,
+                "end": 138
+              },
+              "length_extra": {
+                "v": 1,
+                "start": 138,
+                "end": 139
+              },
+              "length_value": 18,
+              "distance": {
+                "v": 0,
+                "start": 139,
+                "end": 144
+              },
+              "distance_extra": {
+                "v": 0,
+                "start": 144,
+                "end": 144
+              },
+              "distance_value": 1,
+              "hex": "414141414141414141414141414141414141"
+            },
+            "start": 131,
+            "end": 144
+          },
+          {
+            "v": {
+              "plain_pos": 20
+            },
+            "start": 144,
+            "end": 151
+          }
+        ]
+      }
+    ]
+  },
+  "checksum": {
+    "v": 488642757,
+    "start": 152,
+    "end": 160
+  },
+  "len": {
+    "v": 20,
+    "start": 184,
+    "end": 192
+  }
+}

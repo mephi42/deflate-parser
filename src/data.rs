@@ -120,6 +120,7 @@ pub struct LiteralToken {
     pub plain_pos: usize,
     pub v: u8,
     pub c: char,
+    pub hex: String,
 }
 
 #[derive(Clone, Serialize)]
@@ -136,6 +137,7 @@ pub struct WindowToken {
     pub distance: Value<u8>,
     pub distance_extra: Value<u16>,
     pub distance_value: u16,
+    pub hex: String,
 }
 
 #[derive(Clone, Serialize)]
