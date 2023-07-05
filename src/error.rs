@@ -4,6 +4,7 @@ pub enum Error {
     Io(String),
     Utf8(String),
     Parse(ParseError),
+    Serde(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -27,5 +28,11 @@ impl From<::std::str::Utf8Error> for Error {
 impl From<ParseError> for Error {
     fn from(error: ParseError) -> Self {
         Error::Parse(error)
+    }
+}
+
+impl From<serde_json::Error> for Error {
+    fn from(error: serde_json::Error) -> Self {
+        Error::Serde(error.to_string())
     }
 }
