@@ -2,6 +2,7 @@
 name = "deflate_parser"
 version = "0.1.0"
 authors = ["mephi42 <mephi42@gmail.com>"]
+edition = "2021"
 
 [dependencies]
 clap = "3.2.25"
