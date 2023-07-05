@@ -2,7 +2,6 @@ extern crate num;
 #[macro_use]
 extern crate serde_derive;
 extern crate serde_json;
-extern crate sha2;
 
 use std::char;
 use std::fmt::Debug;
@@ -13,7 +12,6 @@ use std::path::Path;
 use std::slice;
 
 use num::PrimInt;
-use sha2::{Digest, Sha256};
 
 use data::{
     CompressedStream, DeflateBlock, DeflateBlockDynamic, DeflateBlockExt, DeflateBlockFixed,
@@ -142,10 +140,8 @@ impl DataStream {
         self.require(bits)?;
         let data = &self.bytes[index..index + n];
         if settings.data {
-            let mut h = Sha256::new();
-            h.update(data);
             *out = Some(Value {
-                v: format!("sha256:{:x}", h.finalize()),
+                v: hex(data),
                 start: self.pos,
                 end: self.pos + bits,
             });
