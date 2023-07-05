@@ -9,6 +9,7 @@ use clap::Parser;
 
 use deflate_parser::data::{CompressedStream, DeflateStream, ZlibStream};
 use deflate_parser::error::Error;
+use deflate_parser::Window;
 use deflate_parser::{parse, write_data, Settings};
 use std::io::BufWriter;
 
@@ -20,6 +21,9 @@ struct Args {
 
     #[arg(long)]
     extract: Option<String>,
+
+    #[arg(long)]
+    dictionary: Option<String>,
 
     #[arg(long, default_value_t = 0)]
     bit_offset: usize,
@@ -58,7 +62,11 @@ fn main() -> Result<(), Error> {
     } else {
         None
     };
-    let result = parse(&mut stream, Path::new(&args.file), &settings);
+    let mut window = Window::default();
+    if let Some(dictionary) = args.dictionary {
+        window.append_dictionary_from_file(&mut File::open(dictionary)?)?;
+    }
+    let result = parse(&mut stream, Path::new(&args.file), &mut window, &settings);
     serde_json::to_writer_pretty(BufWriter::new(output), &stream)?;
     match result {
         Ok(()) => {}

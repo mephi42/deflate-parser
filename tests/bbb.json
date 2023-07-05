@@ -1,0 +1,92 @@
+{
+  "cmf": {
+    "v": 120,
+    "start": 0,
+    "end": 8
+  },
+  "flg": {
+    "v": 249,
+    "start": 8,
+    "end": 16
+  },
+  "dictid": {
+    "v": 822181891,
+    "start": 16,
+    "end": 24
+  },
+  "deflate": {
+    "blocks": [
+      {
+        "header": {
+          "bfinal": {
+            "v": 1,
+            "start": 48,
+            "end": 49
+          },
+          "btype": {
+            "v": 1,
+            "start": 49,
+            "end": 51
+          }
+        },
+        "end": 78,
+        "plain_start": 0,
+        "plain_end": 4,
+        "tokens": [
+          {
+            "v": {
+              "plain_pos": 0,
+              "v": 98,
+              "c": "b",
+              "hex": "62"
+            },
+            "start": 51,
+            "end": 59
+          },
+          {
+            "v": {
+              "plain_pos": 1,
+              "length": {
+                "v": 257,
+                "start": 59,
+                "end": 66
+              },
+              "length_extra": {
+                "v": 0,
+                "start": 66,
+                "end": 66
+              },
+              "length_value": 3,
+              "distance": {
+                "v": 3,
+                "start": 66,
+                "end": 71
+              },
+              "distance_extra": {
+                "v": 0,
+                "start": 71,
+                "end": 71
+              },
+              "distance_value": 4,
+              "hex": "62620a"
+            },
+            "start": 59,
+            "end": 71
+          },
+          {
+            "v": {
+              "plain_pos": 4
+            },
+            "start": 71,
+            "end": 78
+          }
+        ]
+      }
+    ]
+  },
+  "adler32": {
+    "v": 822181891,
+    "start": 80,
+    "end": 88
+  }
+}
