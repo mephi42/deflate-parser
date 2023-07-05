@@ -419,14 +419,14 @@ fn parse_deflate_block_header(
     Ok(())
 }
 
-struct Window {
+pub struct Window {
     data: [u8; 0x10000],
     offset: usize,
     length: usize,
     plain_pos: usize,
 }
 
-impl Window {
+impl Default for Window {
     fn default() -> Window {
         Window {
             data: [0; 0x10000],
@@ -435,7 +435,9 @@ impl Window {
             plain_pos: 0,
         }
     }
+}
 
+impl Window {
     fn append_byte(&mut self, byte: u8) {
         self.data[(self.offset + self.length) % self.data.len()] = byte;
         if self.length < self.data.len() {
@@ -461,6 +463,14 @@ impl Window {
             pos = (pos + 1) % self.data.len();
         }
         bytes
+    }
+
+    pub fn append_dictionary_from_file(&mut self, file: &mut File) -> Result<(), Error> {
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes)?;
+        self.append_bytes(&bytes);
+        self.plain_pos -= bytes.len();
+        Ok(())
     }
 }
 
@@ -783,10 +793,10 @@ fn parse_deflate_block(
 fn parse_deflate(
     deflate: &mut DeflateStream,
     data: &mut DataStream,
+    window: &mut Window,
     settings: &Settings,
 ) -> Result<(), Error> {
-    let mut window = Window::default();
-    while parse_deflate_block(&mut deflate.blocks, data, &mut window, settings)? {}
+    while parse_deflate_block(&mut deflate.blocks, data, window, settings)? {}
     data.align()?;
     Ok(())
 }
@@ -794,6 +804,7 @@ fn parse_deflate(
 fn parse_zlib(
     zlib: &mut ZlibStream,
     data: &mut DataStream,
+    window: &mut Window,
     settings: &Settings,
 ) -> Result<(), Error> {
     data.pop_le(&mut zlib.cmf)?;
@@ -803,7 +814,7 @@ fn parse_zlib(
     }
     zlib.deflate = Some(DeflateStream::default());
     match &mut zlib.deflate {
-        Some(deflate) => parse_deflate(deflate, data, settings)?,
+        Some(deflate) => parse_deflate(deflate, data, window, settings)?,
         None => unreachable!(),
     }
     data.pop_le(&mut zlib.adler32)?;
@@ -813,6 +824,7 @@ fn parse_zlib(
 fn parse_gzip(
     out: &mut Option<CompressedStream>,
     data: &mut DataStream,
+    window: &mut Window,
     settings: &Settings,
 ) -> Result<(), Error> {
     let magic = data.peek_le::<u16>()?;
@@ -844,7 +856,7 @@ fn parse_gzip(
         }
         gzip.deflate = Some(DeflateStream::default());
         match &mut gzip.deflate {
-            Some(deflate) => parse_deflate(deflate, data, settings)?,
+            Some(deflate) => parse_deflate(deflate, data, window, settings)?,
             None => unreachable!(),
         }
         data.pop_le(&mut gzip.checksum)?;
@@ -858,13 +870,14 @@ fn parse_gzip(
 fn parse_data_stream(
     out: &mut Option<CompressedStream>,
     mut data: DataStream,
+    window: &mut Window,
     settings: &Settings,
 ) -> Result<(), Error> {
     match out {
-        Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data, settings),
+        Some(CompressedStream::Raw(deflate)) => parse_deflate(deflate, &mut data, window, settings),
         Some(CompressedStream::Dht(dht)) => parse_dht(dht, &mut data),
-        Some(CompressedStream::Zlib(zlib)) => parse_zlib(zlib, &mut data, settings),
-        _ => parse_gzip(out, &mut data, settings),
+        Some(CompressedStream::Zlib(zlib)) => parse_zlib(zlib, &mut data, window, settings),
+        _ => parse_gzip(out, &mut data, window, settings),
     }?;
     if data.pos == data.end {
         Ok(())
@@ -881,10 +894,11 @@ pub struct Settings {
 pub fn parse(
     out: &mut Option<CompressedStream>,
     path: &Path,
+    window: &mut Window,
     settings: &Settings,
 ) -> Result<(), Error> {
     let data = DataStream::new(path, settings.bit_offset)?;
-    parse_data_stream(out, data, settings)
+    parse_data_stream(out, data, window, settings)
 }
 
 fn get_blocks(stream: &CompressedStream) -> &[DeflateBlock] {
