@@ -29,7 +29,7 @@ mod test {
             },
         )?;
         let mut expected = Vec::new();
-        File::open(&path(&(name.to_owned() + ".json")))?.read_to_end(&mut expected)?;
+        File::open(path(&(name.to_owned() + ".json")))?.read_to_end(&mut expected)?;
         let mut actual = Vec::new();
         serde_json::to_writer_pretty(&mut actual, &result).expect("to_writer_pretty");
         assert_eq!(

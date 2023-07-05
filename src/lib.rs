@@ -31,7 +31,7 @@ impl DataStream {
         let len: usize = f.seek(SeekFrom::End(0))? as usize;
         f.seek(SeekFrom::Start(0))?;
         let mut bytes = Vec::new();
-        bytes.resize(len as usize, 0);
+        bytes.resize(len, 0);
         f.read_exact(&mut bytes)?;
         Ok(DataStream {
             bytes,

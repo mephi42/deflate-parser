@@ -6,7 +6,7 @@ use std::path::Path;
 
 use clap::{Arg, Command};
 
-use deflate_parser::data::{CompressedStream, DeflateStream, DynamicHuffmanTable, ZlibStream};
+use deflate_parser::data::{CompressedStream, DeflateStream, ZlibStream};
 use deflate_parser::{parse, Settings};
 use std::io::BufWriter;
 
@@ -57,9 +57,7 @@ fn main() {
     let mut stream: Option<CompressedStream> = if raw {
         Some(CompressedStream::Raw(DeflateStream::default()))
     } else if raw_dht {
-        Some(CompressedStream::Dht(Box::new(
-            DynamicHuffmanTable::default(),
-        )))
+        Some(CompressedStream::Dht(Box::default()))
     } else if zlib {
         Some(CompressedStream::Zlib(ZlibStream::default()))
     } else {
