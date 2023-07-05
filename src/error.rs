@@ -5,6 +5,7 @@ pub enum Error {
     Utf8(String),
     Parse(ParseError),
     Serde(String),
+    Hex(String),
 }
 
 #[derive(Debug, Serialize)]
@@ -34,5 +35,11 @@ impl From<ParseError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(error: serde_json::Error) -> Self {
         Error::Serde(error.to_string())
+    }
+}
+
+impl From<hex::FromHexError> for Error {
+    fn from(error: hex::FromHexError) -> Self {
+        Error::Hex(error.to_string())
     }
 }

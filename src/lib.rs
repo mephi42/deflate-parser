@@ -6,7 +6,7 @@ extern crate serde_json;
 use std::char;
 use std::fmt::Debug;
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem::size_of;
 use std::path::Path;
 use std::slice;
@@ -141,7 +141,7 @@ impl DataStream {
         let data = &self.bytes[index..index + n];
         if settings.data {
             *out = Some(Value {
-                v: hex(data),
+                v: hex::encode(data),
                 start: self.pos,
                 end: self.pos + bits,
             });
@@ -419,15 +419,6 @@ fn parse_deflate_block_header(
     Ok(())
 }
 
-fn hex(bytes: &[u8]) -> String {
-    let mut result = String::new();
-    for b in bytes {
-        result.push(char::from_digit((b >> 4) as u32, 16).expect("hi"));
-        result.push(char::from_digit((b & 0xf) as u32, 16).expect("lo"));
-    }
-    result
-}
-
 struct Window {
     data: [u8; 0x10000],
     offset: usize,
@@ -498,7 +489,7 @@ fn parse_tokens(
                     plain_pos: token_plain_pos,
                     v,
                     c: v as char,
-                    hex: hex(slice::from_ref(&v)),
+                    hex: hex::encode(slice::from_ref(&v)),
                 })
             }
             256 => {
@@ -549,7 +540,7 @@ fn parse_tokens(
                     distance,
                     distance_extra: distance_extra.clone(),
                     distance_value,
-                    hex: hex(&data),
+                    hex: hex::encode(&data),
                 })
             }
             _ => return Err(data.parse_error("Literal")),
@@ -894,4 +885,61 @@ pub fn parse(
 ) -> Result<(), Error> {
     let data = DataStream::new(path, settings.bit_offset)?;
     parse_data_stream(out, data, settings)
+}
+
+fn get_blocks(stream: &CompressedStream) -> &[DeflateBlock] {
+    match &stream {
+        CompressedStream::Raw(deflate_stream) => &deflate_stream.blocks,
+        CompressedStream::Gzip(gzip_stream) => gzip_stream
+            .deflate
+            .as_ref()
+            .map(|deflate| deflate.blocks.as_slice())
+            .unwrap_or_else(|| &[]),
+        CompressedStream::Dht(_) => &[],
+        CompressedStream::Zlib(zlib_stream) => zlib_stream
+            .deflate
+            .as_ref()
+            .map(|deflate| deflate.blocks.as_slice())
+            .unwrap_or_else(|| &[]),
+    }
+}
+
+fn write_token(file: &mut File, token: &Token) -> Result<(), Error> {
+    match token {
+        Token::Literal(literal) => {
+            file.write_all(&hex::decode(&literal.hex)?)?;
+        }
+        Token::Eob(_) => {}
+        Token::Window(window) => {
+            file.write_all(&hex::decode(&window.hex)?)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_tokens(file: &mut File, tokens: &Option<Vec<Value<Token>>>) -> Result<(), Error> {
+    if let Some(tokens) = &tokens {
+        for token in tokens {
+            write_token(file, &token.v)?;
+        }
+    }
+    Ok(())
+}
+
+pub fn write_data(file: &mut File, stream: &Option<CompressedStream>) -> Result<(), Error> {
+    if let Some(stream) = &stream {
+        for block in get_blocks(stream) {
+            match &block.ext {
+                Some(DeflateBlockExt::Stored(stored)) => {
+                    if let Some(data) = &stored.data {
+                        file.write_all(&hex::decode(&data.v)?)?;
+                    }
+                }
+                Some(DeflateBlockExt::Fixed(fixed)) => write_tokens(file, &fixed.tokens)?,
+                Some(DeflateBlockExt::Dynamic(dynamic)) => write_tokens(file, &dynamic.tokens)?,
+                None => {}
+            }
+        }
+    }
+    Ok(())
 }

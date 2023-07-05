@@ -2,13 +2,14 @@ extern crate clap;
 extern crate deflate_parser;
 extern crate serde_json;
 
+use std::fs::File;
 use std::path::Path;
 
 use clap::Parser;
 
 use deflate_parser::data::{CompressedStream, DeflateStream, ZlibStream};
 use deflate_parser::error::Error;
-use deflate_parser::{parse, Settings};
+use deflate_parser::{parse, write_data, Settings};
 use std::io::BufWriter;
 
 #[derive(Parser)]
@@ -16,6 +17,9 @@ use std::io::BufWriter;
 struct Args {
     #[arg(long)]
     output: Option<String>,
+
+    #[arg(long)]
+    extract: Option<String>,
 
     #[arg(long, default_value_t = 0)]
     bit_offset: usize,
@@ -39,7 +43,7 @@ fn main() -> Result<(), Error> {
     let args = Args::parse();
     let settings = Settings {
         bit_offset: args.bit_offset,
-        data: args.data,
+        data: args.data || args.extract.is_some(),
     };
     let output: Box<dyn std::io::Write> = match args.output {
         Some(output_path) => Box::new(std::fs::File::create(output_path)?),
@@ -61,6 +65,10 @@ fn main() -> Result<(), Error> {
         Err(err) => {
             serde_json::to_string_pretty(&err)?;
         }
+    }
+    if let Some(extract) = &args.extract {
+        let mut f = File::create(extract)?;
+        write_data(&mut f, &stream)?;
     }
     Ok(())
 }
