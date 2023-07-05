@@ -7,6 +7,7 @@ use std::path::Path;
 use clap::Parser;
 
 use deflate_parser::data::{CompressedStream, DeflateStream, ZlibStream};
+use deflate_parser::error::Error;
 use deflate_parser::{parse, Settings};
 use std::io::BufWriter;
 
@@ -34,20 +35,14 @@ struct Args {
     file: String,
 }
 
-fn main() {
+fn main() -> Result<(), Error> {
     let args = Args::parse();
     let settings = Settings {
         bit_offset: args.bit_offset,
         data: args.data,
     };
     let output: Box<dyn std::io::Write> = match args.output {
-        Some(output_path) => match std::fs::File::create(output_path) {
-            Ok(x) => Box::new(x),
-            Err(err) => {
-                eprintln!("{}", err);
-                ::std::process::exit(1);
-            }
-        },
+        Some(output_path) => Box::new(std::fs::File::create(output_path)?),
         None => Box::new(std::io::stdout()),
     };
     let mut stream: Option<CompressedStream> = if args.raw {
@@ -60,19 +55,12 @@ fn main() {
         None
     };
     let result = parse(&mut stream, Path::new(&args.file), &settings);
-    match serde_json::to_writer_pretty(BufWriter::new(output), &stream) {
-        Ok(_) => {}
-        Err(err) => {
-            eprintln!("{}", err);
-            ::std::process::exit(1);
-        }
-    }
+    serde_json::to_writer_pretty(BufWriter::new(output), &stream)?;
     match result {
         Ok(()) => {}
         Err(err) => {
-            let err_json = serde_json::to_string_pretty(&err).expect("to_string_pretty");
-            eprintln!("{}", err_json);
-            ::std::process::exit(1);
+            serde_json::to_string_pretty(&err)?;
         }
     }
+    Ok(())
 }
