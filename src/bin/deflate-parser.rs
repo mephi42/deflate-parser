@@ -4,43 +4,43 @@ extern crate serde_json;
 
 use std::path::Path;
 
-use clap::{Arg, Command};
+use clap::Parser;
 
 use deflate_parser::data::{CompressedStream, DeflateStream, ZlibStream};
 use deflate_parser::{parse, Settings};
 use std::io::BufWriter;
 
+#[derive(Parser)]
+#[command(name = env!("CARGO_PKG_NAME"), author = env!("CARGO_PKG_AUTHORS"), version = env!("CARGO_PKG_DESCRIPTION"))]
+struct Args {
+    #[arg(long)]
+    output: Option<String>,
+
+    #[arg(long, default_value_t = 0)]
+    bit_offset: usize,
+
+    #[arg(long)]
+    raw: bool,
+
+    #[arg(long)]
+    raw_dht: bool,
+
+    #[arg(long)]
+    zlib: bool,
+
+    #[arg(long)]
+    data: bool,
+
+    file: String,
+}
+
 fn main() {
-    let matches = Command::new(env!("CARGO_PKG_NAME"))
-        .version(env!("CARGO_PKG_VERSION"))
-        .author(env!("CARGO_PKG_AUTHORS"))
-        .about(env!("CARGO_PKG_DESCRIPTION"))
-        .arg(Arg::new("OUTPUT").long("output").takes_value(true))
-        .arg(Arg::new("BIT_OFFSET").long("bit-offset").takes_value(true))
-        .arg(Arg::new("RAW").long("raw"))
-        .arg(Arg::new("RAW_DHT").long("raw-dht").conflicts_with("RAW"))
-        .arg(
-            Arg::new("ZLIB")
-                .long("zlib")
-                .conflicts_with_all(&["RAW", "RAW_DHT"]),
-        )
-        .arg(Arg::new("DATA").long("data"))
-        .arg(Arg::new("FILE").required(true).index(1))
-        .get_matches();
+    let args = Args::parse();
     let settings = Settings {
-        bit_offset: match matches.value_of("BIT_OFFSET") {
-            Some(bit_offset_str) => match bit_offset_str.parse::<usize>() {
-                Ok(x) => x,
-                Err(err) => {
-                    eprintln!("{}", err);
-                    ::std::process::exit(1);
-                }
-            },
-            None => 0,
-        },
-        data: matches.is_present("DATA"),
+        bit_offset: args.bit_offset,
+        data: args.data,
     };
-    let output: Box<dyn std::io::Write> = match matches.value_of("OUTPUT") {
+    let output: Box<dyn std::io::Write> = match args.output {
         Some(output_path) => match std::fs::File::create(output_path) {
             Ok(x) => Box::new(x),
             Err(err) => {
@@ -50,20 +50,16 @@ fn main() {
         },
         None => Box::new(std::io::stdout()),
     };
-    let raw = matches.is_present("RAW");
-    let raw_dht = matches.is_present("RAW_DHT");
-    let zlib = matches.is_present("ZLIB");
-    let file = matches.value_of("FILE").unwrap();
-    let mut stream: Option<CompressedStream> = if raw {
+    let mut stream: Option<CompressedStream> = if args.raw {
         Some(CompressedStream::Raw(DeflateStream::default()))
-    } else if raw_dht {
+    } else if args.raw_dht {
         Some(CompressedStream::Dht(Box::default()))
-    } else if zlib {
+    } else if args.zlib {
         Some(CompressedStream::Zlib(ZlibStream::default()))
     } else {
         None
     };
-    let result = parse(&mut stream, Path::new(file), &settings);
+    let result = parse(&mut stream, Path::new(&args.file), &settings);
     match serde_json::to_writer_pretty(BufWriter::new(output), &stream) {
         Ok(_) => {}
         Err(err) => {
