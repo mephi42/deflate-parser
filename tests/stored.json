@@ -1,0 +1,83 @@
+{
+  "magic": {
+    "v": 35615,
+    "start": 0,
+    "end": 8
+  },
+  "method": {
+    "v": 8,
+    "start": 16,
+    "end": 24
+  },
+  "flags": {
+    "v": 8,
+    "start": 24,
+    "end": 32
+  },
+  "time": {
+    "v": 1688575596,
+    "start": 32,
+    "end": 40
+  },
+  "xflags": {
+    "v": 2,
+    "start": 64,
+    "end": 72
+  },
+  "os": {
+    "v": 3,
+    "start": 72,
+    "end": 80
+  },
+  "name": {
+    "v": "foo",
+    "start": 80,
+    "end": 112
+  },
+  "deflate": {
+    "blocks": [
+      {
+        "header": {
+          "bfinal": {
+            "v": 1,
+            "start": 112,
+            "end": 113
+          },
+          "btype": {
+            "v": 0,
+            "start": 113,
+            "end": 115
+          }
+        },
+        "end": 1176,
+        "plain_start": 0,
+        "plain_end": 128,
+        "len": {
+          "v": 128,
+          "start": 120,
+          "end": 128
+        },
+        "nlen": {
+          "v": 65407,
+          "start": 136,
+          "end": 144
+        },
+        "data": {
+          "v": "16006b7e560c72442097a51837336dd19e6f9c55377a80601dbeba5c02e70385b99e82f4e238e17dcd20b5f3069215a2dae605ddb4570ab02a34ef03ed10b1bf6399e7d97b4468aa0e9e3d92214ba64da6411006a82bc98a226934442bd70739ac4d146c2a95ab2eac56da5105b405a074db96d7a6b2fd94ae2bbac28001c39d",
+          "start": 152,
+          "end": 1176
+        }
+      }
+    ]
+  },
+  "checksum": {
+    "v": 3339545820,
+    "start": 1176,
+    "end": 1184
+  },
+  "len": {
+    "v": 128,
+    "start": 1208,
+    "end": 1216
+  }
+}

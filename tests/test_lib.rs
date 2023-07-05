@@ -48,4 +48,9 @@ mod test {
     fn aaa() -> Result<(), Error> {
         test_gz("aaa")
     }
+
+    #[test]
+    fn stored() -> Result<(), Error> {
+        test_gz("stored")
+    }
 }
